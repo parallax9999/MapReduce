@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package mapreduce;
+
+option go_package = "github.com/mapreduce/proto";
+
+// WorkerService handles communication between boss and workers
+service WorkerService {
+    // Boss hosts the server, workers connect to it
+    rpc Control(stream WorkerToBoss) returns (stream BossToWorker);
+}
+
+// Messages from boss to worker
+message BossToWorker {
+    oneof msg {
+        AssignTask assign_task = 1;
+        int32 ping = 2;           // Request pong to check if worker is alive
+        int32 kill = 3;           // Kill message to the worker
+    }
+}
+
+// Messages from worker to boss
+message WorkerToBoss {
+    oneof msg {
+        WorkerHello hello = 1;          // Worker greeting, boss registers it
+        Heartbeat pong = 2;             // Non-task related pong response
+        TaskResult task_result = 3;     // Task completion with output paths
+        string log = 4;                 // Logging messages
+        TaskProgress task_progress = 5; // Progress updates to extend lease
+    }
+}
+
+// Worker introduces itself when connecting
+message WorkerHello {
+    WorkerId worker_id = 1;   // Worker generates its own UUID
+    int32 slots = 2;          // Number of concurrent tasks it can handle
+}
+
+// Heartbeat/pong message
+message Heartbeat {
+    // Could include CPU usage, memory stats, etc. in the future
+    double cpu_usage = 1;
+    int64 memory_usage = 2;
+}
+
+// Task progress reporting to extend lease
+message TaskProgress {
+    TaskId task_id = 1;
+    double percent = 2;       // 0-100
+    int64 read_bytes = 3;
+    int64 write_bytes = 4;
+    int64 records_in = 5;
+    int64 records_out = 6;
+}
+
+// Task assignment from boss to worker
+message AssignTask {
+    TaskId task_id = 1;
+    TaskType type = 2;
+    string job_id = 3;
+    
+    // User code with MAP/REDUCE functions
+    string code_uri = 4;
+    
+    // Lease management
+    string lease_id = 5;
+    int64 lease_ms = 6;       // Lease duration in milliseconds
+    int32 attempt = 7;        // Retry attempt number
+    
+    // Output directory (worker determines specific filenames)
+    string output_dir = 8;
+    
+    // Data formats
+    DataFormat input_type = 9;
+    DataFormat output_type = 10;
+    
+    // Map-specific fields (set when type = MAP)
+    string input_uri = 20;        // Path to input file
+    int64 byte_start = 21;        // Start byte offset
+    int64 byte_end = 22;          // End byte offset
+    int32 reducer_count = 23;     // Number of partitions to create
+    bool enable_combiner = 24;    // Whether to use combiner function
+    
+    // Reduce-specific fields (set when type = REDUCE) 
+    repeated string input_paths = 30; // List of input files for this reducer
+}
+
+// Task completion result from worker to boss
+message TaskResult {
+    TaskId task_id = 1;
+    TaskType type = 2;
+    TaskEndStatus status = 3;     // OK, FAILED, CANCELED, LOST
+    repeated string output_paths = 10; // Files created by this task
+}
+
+// Shared data types
+message JobId {
+    string id = 1;
+}
+
+message TaskId {
+    string id = 1;
+}
+
+message WorkerId {
+    string id = 1;
+}
+
+// Enums
+enum TaskType {
+    MAP = 0;
+    REDUCE = 1;
+}
+
+enum TaskEndStatus {
+    OK = 0;
+    FAILED = 1;
+    CANCELED = 2;
+    LOST = 3;
+}
+
+enum DataFormat {
+    TEXT = 0;
+    PARQUET = 1;
+    JSON = 2;
+}
