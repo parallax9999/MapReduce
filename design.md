@@ -52,4 +52,8 @@
     - Speedup with varying numbers of workers (1, 2, 3, 4)
 
 
+---
+
+### Additional details:
+[Google doc for protobuffs and structs](https://docs.google.com/document/d/1YcSvGkeu3RkAzqwNxshYmHVy1qNCkKK0jGcbzysP-RA/edit?usp=sharing)
 
