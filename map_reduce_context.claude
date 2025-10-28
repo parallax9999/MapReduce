@@ -1,0 +1,341 @@
+// boss_client.proto
+syntax = ”proto3”;
+
+service ClientService {
+	// Boss hosts server, client connects to it
+	rpc	Control(stream ClientToBoss)		return (stream BossToClient);
+}
+
+message ClientToBoss {
+	// submit a job
+// the number of map tasks
+// the number reduce tasks
+// path to the input data file(s)
+// path to user-provided file containing map and reduce functions	
+// upload file, either be:
+	// an actual data file
+	// user provided map and reduce functions
+}
+
+message BossToClient {
+	// 
+}
+
+// boss_worker.proto
+
+syntax = “proto3”;
+
+service WorkerService {
+	// Boss hosts the server, workers connect to it.
+rpc 	Control(stream WorkerToBoss) 	returns (stream BossToWorker);
+}
+
+message BossToWorker {
+oneof msg {
+// Assigns tasks to a worker. Should be a MAP or REDUCE. Boss would keep track of how many tasks a worker is doing. 
+    		AssignTask 	assign		= 1;
+	
+	// Request a pong back to make sure bro is alive
+	int32		ping		= 2;
+	
+// Kill message to the worker
+    		int32 		kill   		= 3;
+  	}
+}
+
+message TaskProgress {
+  	TaskId   	task_id     	= 1;
+  	double   	percent     	= 2;   	// 0…100
+  	int64    	read_bytes  	= 3;
+  	int64    	write_bytes 	= 4;
+  	int64    	records_in  	= 5;
+  	int64    	records_out 	= 6;
+}
+
+message Heartbeat {
+// prolly non-task related stuff?
+// Cpu usage?
+}
+
+message WorkerHello {
+	// Worker comes up with their own uuid
+WorkerId 	worker_id 	= 1;
+
+	// Number of concurrent tasks it can handle (since this is 1 cpu core I don’t think this matters that much)
+int32 		slots 		= 2;
+}
+
+message WorkerToBoss {
+oneof msg {
+// worker greeting, boss registers it into its map
+  		WorkerHello 	hello         	= 1;
+
+		// Non-task related pong
+  		Heartbeat	 pong          	= 2;
+
+		// I’m done :3 Here are the output paths! For MAP function, it will include the output paths of the partitions. For reduce, it will just have the reduced file. 
+  		TaskResult 	task_result        = 3; 
+
+		// For logging?
+  		string 		log                    = 4;
+		
+		// Allows boss to have up-to-date progress/stats on a task. Should also include how many tasks it’s working on.
+		TaskProgress 	task_progress	= 5;
+}
+}
+
+// Shared stuff
+message JobId    { string id = 1; }
+message TaskId   { string id = 1; }
+message WorkerId { string id = 1; }
+
+enum TaskType { MAP = 0; REDUCE = 1; }
+
+enum DataFormat { TEXT = 0; PARQUET = 1; JSON = 2; }
+
+message AssignTask {
+ 	TaskId 		task_id   	= 1;
+  	TaskType 	type      	= 2;
+  	string 		job_id	    	= 3;
+	
+	// The user code with the MAP/REDUCE functions that we run
+  	string    	code_uri        	= 4; 
+	
+// Boss hands out a lease to a worker. Boss extends lease on TaskProgress. If no TaskProgress, boss requeues the task.
+string    	lease_id     	= 5;
+int64     	lease_ms     	= 6;
+	int32     	attempt      	= 7;
+	
+	// probably /job-id
+string output_dir = 8;
+
+// Input and output file types
+DataFormat	input_type 	= 9;
+DataFormat	output_type	= 10;
+
+  	// Map specifics
+	
+// path to the input file. Sometimes a user can upload multiple input files.
+ 	string 		input_uri 		= 20 ;
+	// Which portion of the input file to read
+	int64		byte_start		= 21;
+	int64		byte_end		= 22;
+
+// This is our M. We use a hash function to output the lines to M partitions, one for each reducer.
+ 	int32     	reducer_count   	= 23;
+	
+	// This is pretty easy to implement if we’re using Go since Go’s map is gigachad.
+  	bool      	enable_combiner 	= 24;
+  
+// Reduce specifics
+ 
+// The list of “shards” that the reducer should pull from
+repeated string 	input_paths 	= 30;
+}
+
+
+enum TaskEndStatus { OK = 0; FAILED = 1; CANCELED = 2; LOST = 3; }
+
+message TaskResult {
+	// The boss knows what worker this came from, but since workers can have multiple tasks, it doesn’t know what task this is. 
+	TaskId			task_id   		= 1;
+	TaskType		type      		= 2;
+	
+// Did the task fail?
+TaskEndStatus  	status     		= 3;
+
+// for reducer this is just one path, for mapper, this is multiple paths.
+  	repeated 		string output_paths 	= 10;
+// To ensure that our output files from multiple workers don’t clash, the worker can create some hash related to the input_uri + byte_start + byte_end + reducer_count  in /job-id/, and then return their list of outputs in TaskResult
+}
+
+
+
+
+I considered using a simple “fan-out” approach where we just divide the dataset up equally for each worker and one shot run it (much easier), but a better way would be to use a queue. This makes support for requeueing failed tasks or chaining Map Reduces trivial.
+
+If the boss is written in Go, here’s what it would probably look like:
+
+// Each worker gets one of these
+type WorkerState struct {
+	ID string
+	Stream WorkerService_ControlServer 	// the grpc stream
+	Current int					// number of active tasks
+	Capacity int					// max concurrent tasks (1 for 1 cpu core)
+	Healthy bool					// are you alive ahhh
+LastPing time.Time				// use this to determine if worker is dead
+ActiveTasks map[string] *TaskState		// task_id -> task, we can look at this to figure out if the worker gets stuck on a task 
+}
+
+// enum for TaskType
+type TaskType int
+const (
+	Map TaskType = iota
+Reduce
+)
+
+type TaskEndStatus int
+const (
+	OK TaskEndStatus = iota
+	Failed
+Canceled
+)
+// for both TaskState and JobState
+type DataFormat int
+const (
+	TEXT DataFormat = iota
+PARQUET
+JSON
+)
+type TaskState struct {
+	ID string
+JobID string		// Many tasks map to a job
+Type TaskType
+AssignedTo string 	// worder_id
+Status TaskEndStatus
+
+// When we get TaskProgress back, we update the lease
+LeaseID string
+LeaseExpiry time.Time
+Attempt int		// how many times have we retried this?
+
+Progress float64
+RecordsIn int64
+RecordsOut int64
+
+CodeURI string
+OutputDir string
+InputType DataFormat
+OutputType DataFormat
+
+// both mapper and reducer need to have output
+OutputPaths []string
+
+// For Mapper
+InputURI string
+ReducerCount int32
+ByteStart int64
+ByteEnd int64
+EnableCombiner bool
+
+// For Reducer
+InputPaths []string
+}
+
+
+type JobPhase int
+const (
+	Pending JobPhase = iota
+	Mapping
+Reducing
+Done
+Failed
+Canceled
+)
+// Each job that the client submits gets one of these
+// Each task gets a pointer back to its parent job. It uses that pointer to update job status.
+type JobState struct {
+	ID string
+	Phase JobPhase
+
+	CodeURI string
+	MapperCount int		// User specified number of Mappers
+	ReducerCount int		// User specified number of Reducers
+	EnableCombiner bool
+OriginalFiles []string
+InputType DataFormat
+OutputType DataFormat
+
+// Fill out this 2D array as mappers return their outputs
+// Looks something like: [ [map1_part1, map2_part2], [map2_part1, map2_part2] … ]
+// We need this since we need to tell each reducer what files to use. 
+MapOutputs [][]string
+
+MapTasksTotal int
+MapTasksDone int
+ReduceTasksTotal int
+ReduceTasksDone int
+
+TasksDone int
+TasksTotal int
+
+CreatedAt time.Time
+DoneAt *time.Time
+ }
+
+
+type BossState struct {
+// Cluster state
+	Workers map[string] *WorkerState 	//worker_id -> state
+	
+	// job_id -> state. When a client submits a job, we create an entry in here, then we create Tasks and put them in the channel below.
+Jobs map[string] *JobState
+
+	// pending tasks, whether they’re new or requeued
+	PendingTasks chan *TaskState
+}
+
+
+There’s a lot of inconsistencies with how input format, output format, input files, output files, etc are handled above ( in both the Go structs and the protobuffs ). Should the AssignTask contain the input files, format, and output file names? Or should the worker decide what to name its output files and tell the boss after it’s done?
+
+
+
+The entrypoint of the boss starts:
+Initialize BossState
+Create empty maps for workers and jobs
+initialize buffered channel for PendingTasks
+Start scheduler loop (for queueing tasks).
+while true
+If PendingTasks chan is not empty
+Pop one TaskState
+make sure to initialize the task and give it a lease time.
+loop through all workers. If a worker is healthy and below capacity
+take a task and assign it to the worker.
+Update worker’s ActiveTasks
+SendAssignTask over the worker’s gRPC stream
+break
+If we looped through all workers and didn’t assign the task, we put it back in the queue.  
+Else, sleep a little.
+Start health monitor loop (detect dead workers, and expired leases)
+another goroutine inside that just goes in a loop and pings all the workers
+The pong is handled by the goroutine that’s spun per worker (see below)
+another goroutine that goes in a loop and detects workers that haven’t ponged 
+For each worker 
+if time.Since(worker.LastPing) > threshold
+Mark healthy = False
+For every ActiveTask on that worker,
+Requeue that task into PendingTasks
+increment Attempt
+another goroutine that goes in a loop and scans through all worker’s active leases
+For each worker:
+For each ActiveLease
+if time.Now() > task.LeaseExpiry, it means that the worker hasn’t updated progress in time
+The boss requeues task, increments Attempt
+ Reset LeaseID and LeaseExpiry
+start grpc server
+when a worker connects, the server receives a bidirectional stream (Control() RPC), we spin a goroutine for it.
+Handle worker messages inside Control():
+Read the first WorkerHello message
+Register the worker in boss.Workers
+Spin a goroutine to listen for messages from that worker.
+If TaskProgress, update Progress and LeaseExpiry
+If Pong, update worker’s LastPing
+If TaskResult, mark the task as done. Increment parent Job’s counters accordingly. 
+If the type of the task is Map
+Put output files in parent Job.
+check if the Job’s MapTasksTotal == MapTasksDone. 
+If so, we spawn a goroutine that will queue all the Reduce Tasks 
+If the type of task is Reduce, check if Job’s ReduceTasksTotal == ReduceTasksDone
+If so, we mark the job as done and update all of its attributes accordingly.
+If stream ends, it’s fine, health monitor loop should handle that.
+When client connects, spin 2 goroutines for it
+Stream all the current workers, tasks, and progress to the client
+Handle incoming client requests by parsing and then queueing Tasks
+SubmitJob:
+Create new JobState and initialize values (we need to do some calculations for this)
+Split input files into TaskState objects
+Push each task into PendingTasks
+
+
+This is all without mutex and locks, I’m sure there will be race conditions.
+
