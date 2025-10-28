@@ -26,4 +26,6 @@
 - As our special feature, we will implement a task queue that allows for requeuing when for straggling tasks and failed workers.
 - special feature performance will be measured by determining key timings (time to detect failiures, time to recover, CPU time)
 
+Additional details:
+[Google doc for protobuffs and structs](https://docs.google.com/document/d/1YcSvGkeu3RkAzqwNxshYmHVy1qNCkKK0jGcbzysP-RA/edit?usp=sharing)
 
