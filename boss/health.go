@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"time"
+
+	pb "mapreduce/pb"
 )
 
 /*
@@ -19,7 +21,7 @@ func (boss *BossState) startHealthMonitor() {
 		defer boss.wg.Done()
 		log.Println("Starting worker ping loop...")
 
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(3 * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -32,14 +34,14 @@ func (boss *BossState) startHealthMonitor() {
 		}
 	}()
 
-	// Check for failed workers every 5 secs
+	// Check for failed workers every 10 secs
 	// If a worker is dead, requeue their ActiveTasks
 	boss.wg.Add(1)
 	go func() {
 		defer boss.wg.Done()
 		log.Println("Starting worker failure detection loop...")
 
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -52,14 +54,14 @@ func (boss *BossState) startHealthMonitor() {
 		}
 	}()
 
-	// Check for expired leases every 5 secs
+	// Check for expired leases every 10 secs
 	// If a lease is expired, requeue the task
 	boss.wg.Add(1)
 	go func() {
 		defer boss.wg.Done()
 		log.Println("Starting lease expiry detection loop...")
 
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -77,14 +79,26 @@ func (boss *BossState) pingAllWorkers() {
 	boss.workersMutex.RLock()
 	defer boss.workersMutex.RUnlock()
 
-	for workerID := range boss.Workers {
-		// TODO: Send ping over gRPC stream
-		log.Printf("Pinging worker %s", workerID)
+	for workerID, worker := range boss.Workers {
+		if worker.Healthy && worker.OutChan != nil {
+			pingMsg := &pb.BossToWorker{
+				Msg: &pb.BossToWorker_Ping{
+					Ping: int32(time.Now().Unix()),
+				},
+			}
+
+			select {
+			case worker.OutChan <- pingMsg:
+				log.Printf("Pinged worker %s", workerID)
+			default:
+				log.Printf("Failed to ping worker %s - channel full", workerID)
+			}
+		}
 	}
 }
 
 func (boss *BossState) detectFailedWorkers() {
-	threshold := 30 * time.Second
+	threshold := 10 * time.Second
 	now := time.Now()
 
 	boss.workersMutex.Lock()
@@ -92,6 +106,7 @@ func (boss *BossState) detectFailedWorkers() {
 
 	for workerID, worker := range boss.Workers {
 		worker.mutex.Lock()
+
 		if worker.Healthy && now.Sub(worker.LastPing) > threshold {
 			log.Printf("Marking worker %s as failed (last ping: %v ago)",
 				workerID, now.Sub(worker.LastPing))
@@ -117,6 +132,7 @@ func (boss *BossState) detectFailedWorkers() {
 			worker.ActiveTasks = make(map[string]*TaskState)
 			worker.Current = 0
 		}
+
 		worker.mutex.Unlock()
 	}
 }
@@ -129,11 +145,12 @@ func (boss *BossState) detectExpiredLeases() {
 
 	for workerID, worker := range boss.Workers {
 		worker.mutex.Lock()
+
 		for taskID, task := range worker.ActiveTasks {
 			if now.After(task.LeaseExpiry) {
 				log.Printf("Task %s on worker %s has expired lease, requeuing", taskID, workerID)
 
-				// Requeue the task
+				// Requeue the task, reinitialize attributes
 				task.Attempt++
 				task.WorkerID = ""
 				task.LeaseID = ""
@@ -149,6 +166,7 @@ func (boss *BossState) detectExpiredLeases() {
 				}
 			}
 		}
+
 		worker.mutex.Unlock()
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	pb "mapreduce/pb"
 	"time"
 )
 
@@ -19,7 +20,7 @@ func (boss *BossState) startSchedulerLoop() {
 
 		log.Println("Starting scheduler loop...")
 
-		ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 
 		for {
@@ -74,8 +75,22 @@ func (boss *BossState) assignTaskToWorker(task *TaskState) bool {
 			task.WorkerID = workerID
 			task.Status = Assigned
 
-			// TODO: Send AssignTask over gRPC stream
-			log.Printf("Assigned task %s to worker %s", task.ID, workerID)
+			// Send AssignTask over gRPC stream
+			assignMsg := boss.createAssignTaskMessage(task)
+
+			select {
+			case worker.OutChan <- assignMsg:
+				log.Printf("Assigned task %s to worker %s", task.ID, workerID)
+			default:
+				log.Printf("Failed to send task %s to worker %s - channel full", task.ID, workerID)
+				// Revert assignment
+				worker.Current--
+				delete(worker.ActiveTasks, task.ID)
+				task.WorkerID = ""
+				task.Status = Queued
+				worker.mutex.Unlock()
+				return false
+			}
 
 			worker.mutex.Unlock()
 			return true
@@ -111,4 +126,65 @@ func (boss *BossState) logSchedulerStatus() {
 
 	log.Printf("Status: Workers=%d/%d healthy, Jobs=%d, Tasks=%d active, %d pending",
 		healthyWorkers, totalWorkers, totalJobs, activeTasks, pendingTasks)
+}
+
+/*
+converts a TaskState to protobuf AssignTask message
+*/
+func (boss *BossState) createAssignTaskMessage(task *TaskState) *pb.BossToWorker {
+	var taskType pb.TaskType
+	if task.Type == MapTask {
+		taskType = pb.TaskType_MAP
+	} else {
+		taskType = pb.TaskType_REDUCE
+	}
+
+	var inputType, outputType pb.DataFormat
+	switch task.InputType {
+	case TEXT:
+		inputType = pb.DataFormat_TEXT
+	case PARQUET:
+		inputType = pb.DataFormat_PARQUET
+	case JSON:
+		inputType = pb.DataFormat_JSON
+	}
+
+	switch task.OutputType {
+	case TEXT:
+		outputType = pb.DataFormat_TEXT
+	case PARQUET:
+		outputType = pb.DataFormat_PARQUET
+	case JSON:
+		outputType = pb.DataFormat_JSON
+	}
+
+	assignTask := &pb.AssignTask{
+		TaskId:     &pb.TaskId{Id: task.ID},
+		Type:       taskType,
+		JobId:      task.JobID,
+		CodeUri:    task.CodeURI,
+		LeaseId:    task.LeaseID,
+		LeaseMs:    int64(task.LeaseExpiry.Sub(time.Now()).Milliseconds()),
+		Attempt:    int32(task.Attempt),
+		OutputDir:  task.OutputDir,
+		InputType:  inputType,
+		OutputType: outputType,
+	}
+
+	// Add task-specific fields
+	if task.Type == MapTask {
+		assignTask.InputUri = task.InputURI
+		assignTask.ByteStart = task.ByteStart
+		assignTask.ByteEnd = task.ByteEnd
+		assignTask.ReducerCount = task.ReducerCount
+		assignTask.EnableCombiner = task.EnableCombiner
+	} else {
+		assignTask.InputPaths = task.InputPaths
+	}
+
+	return &pb.BossToWorker{
+		Msg: &pb.BossToWorker_AssignTask{
+			AssignTask: assignTask,
+		},
+	}
 }

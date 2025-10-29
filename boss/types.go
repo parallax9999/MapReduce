@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+	
+	pb "mapreduce/pb"
 )
 
 // TaskType represents the type of task (Map or Reduce)
@@ -89,8 +91,8 @@ type TaskState struct {
 
 // WorkerState tracks the state of a single worker
 type WorkerState struct {
-	ID string
-	// Stream      WorkerService_ControlServer // Will add when we have protobuf
+	ID          string
+	OutChan     chan *pb.BossToWorker // Channel to send messages to worker
 	Current     int
 	Capacity    int
 	Healthy     bool
@@ -133,6 +135,8 @@ type JobState struct {
 
 // BossState is the central state of the MapReduce master
 type BossState struct {
+	pb.UnimplementedWorkerServiceServer
+	
 	// Cluster state
 	Workers      map[string]*WorkerState
 	workersMutex sync.RWMutex

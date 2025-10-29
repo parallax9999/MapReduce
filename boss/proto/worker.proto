@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package mapreduce;
 
-option go_package = "github.com/mapreduce/proto";
+option go_package = "mapreduce/pb";
 
 // WorkerService handles communication between boss and workers
 service WorkerService {
@@ -89,7 +89,7 @@ message AssignTask {
 message TaskResult {
     TaskId task_id = 1;
     TaskType type = 2;
-    TaskEndStatus status = 3;     // OK, FAILED, CANCELED, LOST
+    TaskStatus status = 3;     // OK, FAILED, CANCELED, LOST
     repeated string output_paths = 10; // Files created by this task
 }
 
@@ -112,11 +112,13 @@ enum TaskType {
     REDUCE = 1;
 }
 
-enum TaskEndStatus {
-    OK = 0;
-    FAILED = 1;
-    CANCELED = 2;
-    LOST = 3;
+enum TaskStatus {
+    QUEUED = 0;
+    ASSIGNED = 1;
+    IN_PROGRESS = 2;
+    COMPLETED = 3;
+    FAILED = 4;
+    CANCELED = 5;
 }
 
 enum DataFormat {
