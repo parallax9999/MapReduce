@@ -6,7 +6,9 @@ import (
 	"time"
 )
 
-// handleTaskCompletion processes a completed task and manages job state transitions
+/*
+processes a completed task and manages job state transitions.
+*/
 func (boss *BossState) handleTaskCompletion(task *TaskState, success bool, outputPaths []string) {
 	if !success {
 		// Task failed, requeue it
