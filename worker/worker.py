@@ -168,10 +168,9 @@ class Worker:
         """
         Handle a task assignment from the boss.
 
-        For now, this simulates task execution. In a real implementation,
-        this would:
+        This executes the actual MapReduce task:
         - Load user code from code_uri
-        - Execute map or reduce function
+        - Execute map or reduce function on input data
         - Write output files
         - Send progress updates
 
@@ -186,7 +185,6 @@ class Worker:
         logger.info(f"Task Type: {worker_pb2.TaskType.Name(task.type)}")
         logger.info(f"Input URI: {task.input_uri}")
         logger.info(f"Code URI: {task.code_uri}")
-        logger.info(f"Output Dir: {task.output_dir}")
         logger.info(f"Byte Range: {task.byte_start} - {task.byte_end}")
         logger.info(f"Input Type: {worker_pb2.DataFormat.Name(task.input_type)}")
         logger.info(f"Output Type: {worker_pb2.DataFormat.Name(task.output_type)}")
@@ -195,28 +193,23 @@ class Worker:
         logger.info(f"Attempt: {task.attempt}")
         logger.info("===============================")
 
+        # Get volume path from environment
+        volume_path = os.getenv("VOLUME_PATH", "./volume")
+        logger.info(f"Using volume path: {volume_path}")
+
         logger.info(f"Starting task {task_id}")
 
-        # Simulate task execution with progress updates
-        task_duration = 10.0  # seconds
-        progress_interval = 2.0  # seconds
-        start_time = time.time()
-
         try:
-            while True:
-                elapsed = time.time() - start_time
-                progress = min((elapsed / task_duration) * 100, 100.0)
+            # Execute the actual MapReduce task
+            if task.type == worker_pb2.TaskType.MAP:
+                output_paths = await self.execute_map_task(task, volume_path)
+            elif task.type == worker_pb2.TaskType.REDUCE:
+                output_paths = await self.execute_reduce_task(task, volume_path)
+            else:
+                raise ValueError(f"Unknown task type: {task.type}")
 
-                # Send progress update
-                await self.send_progress(task, progress)
-
-                # Check if task is complete
-                if elapsed >= task_duration:
-                    await self.complete_task(task)
-                    break
-
-                # Wait before next progress update
-                await asyncio.sleep(progress_interval)
+            # Task completed successfully
+            await self.complete_task(task, output_paths)
 
         except Exception as e:
             logger.error(f"Error handling task {task_id}: {e}")
@@ -252,15 +245,13 @@ class Worker:
         except Exception as e:
             logger.error(f"Failed to send progress: {e}")
 
-    async def complete_task(self, task: worker_pb2.AssignTask):
+    async def complete_task(self, task: worker_pb2.AssignTask, output_paths: list[str]):
         """
         Send task completion result to boss.
 
-        In a real implementation, this would include the actual output paths
-        created by the map or reduce function.
-
         Args:
             task: Completed task
+            output_paths: List of output file paths created by the task
         """
         try:
             result = worker_pb2.WorkerToBoss(
@@ -268,12 +259,12 @@ class Worker:
                     task_id=task.task_id,
                     type=task.type,
                     status=worker_pb2.TaskStatus.COMPLETED,
-                    output_paths=[]  # Empty for dummy worker
+                    output_paths=output_paths
                 )
             )
 
             await self.stream.write(result)
-            logger.info(f"Completed task {task.task_id.id}")
+            logger.info(f"Completed task {task.task_id.id} with {len(output_paths)} output files")
 
         except Exception as e:
             logger.error(f"Failed to send task result: {e}")
@@ -301,6 +292,198 @@ class Worker:
 
         except Exception as e:
             logger.error(f"Failed to send task failure: {e}")
+
+    async def execute_map_task(self, task: worker_pb2.AssignTask, volume_path: str) -> list[str]:
+        """
+        Execute a map task: read input data, apply map function, write partitioned outputs.
+
+        Args:
+            task: Map task assignment
+            volume_path: Base volume path
+
+        Returns:
+            List of output file paths (one per reducer partition)
+        """
+        logger.info(f"Executing map task {task.task_id.id}")
+
+        # Load user code
+        code_path = os.path.join(volume_path, task.code_uri.lstrip('/'))
+        map_function = await self.load_user_code(code_path, 'map')
+
+        # Read input data within byte range
+        input_path = os.path.join(volume_path, task.input_uri.lstrip('/'))
+        input_data = await self.read_input_range(input_path, task.byte_start, task.byte_end)
+
+        # Create output files for each partition
+        output_paths = []
+        partition_files = {}
+
+        try:
+            # Open output files for each partition directly in volume root
+            for partition in range(task.reducer_count):
+                output_file = os.path.join(volume_path, f"map_{task.task_id.id}_{partition}.txt")
+                partition_files[partition] = open(output_file, 'w')
+                # Store relative path (remove volume_path prefix for reporting to boss)
+                relative_path = output_file.replace(volume_path, '').lstrip('/')
+                output_paths.append(relative_path)
+
+            # Process input data line by line
+            records_processed = 0
+            for line in input_data.strip().split('\n'):
+                if not line.strip():
+                    continue
+
+                # Parse CSV line (key,value)
+                parts = line.strip().split(',', 1)
+                if len(parts) != 2:
+                    continue
+
+                key, value = parts[0].strip(), parts[1].strip()
+
+                # Apply map function
+                for output_key, output_value in map_function(key, value):
+                    # Determine partition using hash
+                    partition = hash(str(output_key)) % task.reducer_count
+
+                    # Write to appropriate partition file
+                    partition_files[partition].write(f"{output_key},{output_value}\n")
+
+                records_processed += 1
+
+                # Send progress updates periodically
+                if records_processed % 100 == 0:
+                    await self.send_progress(task, 50.0)  # Mid-way progress
+
+            logger.info(f"Map task processed {records_processed} records")
+
+        finally:
+            # Close all partition files
+            for f in partition_files.values():
+                f.close()
+
+        await self.send_progress(task, 100.0)
+        return output_paths
+
+    async def execute_reduce_task(self, task: worker_pb2.AssignTask, volume_path: str) -> list[str]:
+        """
+        Execute a reduce task: read partitioned inputs, apply reduce function, write final output.
+
+        Args:
+            task: Reduce task assignment
+            volume_path: Base volume path
+
+        Returns:
+            List of output file paths
+        """
+        logger.info(f"Executing reduce task {task.task_id.id}")
+
+        # Load user code
+        code_path = os.path.join(volume_path, task.code_uri.lstrip('/'))
+        reduce_function = await self.load_user_code(code_path, 'reduce')
+
+        # Create output file directly in volume root
+        output_file = os.path.join(volume_path, f"reduce_{task.task_id.id}.txt")
+
+        # Group input data by key
+        key_groups = {}
+        records_read = 0
+
+        # Read all input files
+        for input_path in task.input_paths:
+            full_input_path = os.path.join(volume_path, input_path.lstrip('/'))
+            logger.info(f"Reading reduce input: {full_input_path}")
+
+            try:
+                with open(full_input_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+
+                        # Parse key,value
+                        parts = line.split(',', 1)
+                        if len(parts) != 2:
+                            continue
+
+                        key, value = parts[0].strip(), parts[1].strip()
+
+                        # Try to convert value to int if possible
+                        try:
+                            value = int(value)
+                        except ValueError:
+                            pass
+
+                        # Group by key
+                        if key not in key_groups:
+                            key_groups[key] = []
+                        key_groups[key].append(value)
+
+                        records_read += 1
+
+            except FileNotFoundError:
+                logger.warning(f"Input file not found: {full_input_path}")
+
+        # Apply reduce function to each key group
+        with open(output_file, 'w') as out_f:
+            records_written = 0
+            for key, values in key_groups.items():
+                for output_key, output_value in reduce_function(key, values):
+                    out_f.write(f"{output_key},{output_value}\n")
+                    records_written += 1
+
+        logger.info(f"Reduce task read {records_read} records, wrote {records_written} results")
+
+        # Return relative path
+        relative_path = output_file.replace(volume_path, '').lstrip('/')
+        await self.send_progress(task, 100.0)
+        return [relative_path]
+
+    async def load_user_code(self, code_path: str, function_name: str):
+        """
+        Load and return the specified function from user's Python code.
+
+        Args:
+            code_path: Path to the Python file
+            function_name: Name of function to load ('map' or 'reduce')
+
+        Returns:
+            The requested function
+        """
+        logger.info(f"Loading {function_name} function from {code_path}")
+
+        # Read and execute the user's code
+        with open(code_path, 'r') as f:
+            code = f.read()
+
+        # Create a namespace to execute the code in
+        namespace = {}
+        exec(code, namespace)
+
+        # Return the requested function
+        if function_name not in namespace:
+            raise ValueError(f"Function '{function_name}' not found in {code_path}")
+
+        return namespace[function_name]
+
+    async def read_input_range(self, input_path: str, start: int, end: int) -> str:
+        """
+        Read a specific byte range from an input file.
+
+        Args:
+            input_path: Path to input file
+            start: Start byte offset
+            end: End byte offset (inclusive)
+
+        Returns:
+            The data within the specified range
+        """
+        logger.info(f"Reading {input_path} bytes {start}-{end}")
+
+        with open(input_path, 'r') as f:
+            f.seek(start)
+            data = f.read(end - start + 1)
+
+        return data
 
 
 async def main():

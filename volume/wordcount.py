@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Simple MapReduce word count implementation for CSV key-value pairs.
 Takes CSV with format: word,count
