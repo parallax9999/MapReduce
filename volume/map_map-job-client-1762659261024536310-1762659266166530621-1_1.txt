@@ -1,5 +1,0 @@
-grape,3
-banana,2
-apple,4
-grape,2
-banana,3

@@ -132,9 +132,8 @@ func (c *Client) handleMessages() {
 }
 
 func (c *Client) submitJob() {
-	log.Println("Submitting real word count job...")
 
-	mapperCount := 2 // Hard-coded on client side
+	mapperCount := 2
 	reducerCount := 2
 
 	jobRequest := &pb.ClientToBoss{
@@ -156,11 +155,4 @@ func (c *Client) submitJob() {
 		log.Printf("Failed to submit job: %v", err)
 		return
 	}
-
-	fmt.Println("Real job submitted!")
-	fmt.Println("  Code: /wordcount.py")
-	fmt.Println("  Input: /input.csv")
-	fmt.Printf("  Mappers: %d\n", mapperCount)
-	fmt.Printf("  Reducers: %d\n", reducerCount)
-	fmt.Println("  Output: /output")
 }
