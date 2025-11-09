@@ -3,6 +3,7 @@ module client
 go 1.25.3
 
 require (
+	github.com/gorilla/websocket v1.5.0
 	google.golang.org/grpc v1.76.0
 	mapreduce v0.0.0
 )

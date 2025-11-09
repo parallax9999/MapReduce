@@ -24,7 +24,7 @@ message ClientToBoss {
 // Messages from boss to client
 message BossToClient {
     oneof msg {
-        string status_dump = 1;  // Simple string dump of system state
+        DashboardState dashboard_state = 1;  // Complete structured state for dashboards
     }
 }
 
@@ -44,5 +44,72 @@ message SubmitJobRequest {
     DataFormat input_type = 6;     // TEXT, PARQUET, JSON
     DataFormat output_type = 7;    // Output format
     string output_dir = 8;         // Where to store results
+}
+
+// Dashboard state messages for real-time monitoring
+
+message DashboardState {
+    SystemOverview system = 1;
+    repeated WorkerInfo workers = 2;  
+    repeated JobInfo jobs = 3;
+    repeated TaskInfo active_tasks = 4;
+    repeated TaskInfo pending_tasks = 5;
+    int64 timestamp = 6;
+}
+
+message SystemOverview {
+    int32 total_workers = 1;
+    int32 healthy_workers = 2;
+    int32 total_capacity = 3;      // Sum of all worker capacities
+    int32 used_capacity = 4;       // Sum of all active tasks
+    int32 pending_task_count = 5;  // Queue length
+    int32 total_jobs = 6;
+    int32 active_jobs = 7;         // Jobs in Mapping/Reducing phase
+}
+
+message WorkerInfo {
+    string id = 1;
+    bool healthy = 2;
+    int32 capacity = 3;
+    int32 current_tasks = 4;
+    repeated string active_task_ids = 5;  // Just IDs to avoid duplication
+    int64 last_ping_seconds_ago = 6;
+    float cpu_usage_percent = 7;         // CPU usage percentage
+    int64 memory_usage_bytes = 8;        // Memory usage in bytes
+}
+
+message JobInfo {
+    string id = 1;
+    string phase = 2;              // "Pending", "Mapping", "Reducing", "Done"
+    int32 map_tasks_done = 3;
+    int32 map_tasks_total = 4;
+    int32 reduce_tasks_done = 5;
+    int32 reduce_tasks_total = 6;
+    float overall_progress = 7;     // (map_done + reduce_done) / (map_total + reduce_total)
+    int32 mapper_count = 8;
+    int32 reducer_count = 9;
+    int64 created_seconds_ago = 10;
+    bool enable_combiner = 11;
+    repeated string input_files = 12;  // Input files for the job
+    string output_path = 13;           // Output directory path
+    string code_uri = 14;              // Path to MapReduce code
+}
+
+message TaskInfo {
+    string id = 1;
+    string type = 2;               // "MAP", "REDUCE"  
+    string status = 3;             // "Queued", "Assigned", "InProgress", "Completed"
+    string job_id = 4;
+    string worker_id = 5;          // Empty if not assigned
+    float progress_percent = 6;
+    int64 records_in = 7;
+    int64 records_out = 8;
+    int32 attempt = 9;             // Retry count
+    int64 lease_expires_in_seconds = 10;  // Time until lease expires
+    // Map-specific
+    int64 byte_start = 11;
+    int64 byte_end = 12;
+    // Reduce-specific  
+    int32 input_file_count = 13;
 }
 

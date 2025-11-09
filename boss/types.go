@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 	"time"
-	
+
 	pb "mapreduce/pb"
 )
 
@@ -98,7 +98,11 @@ type WorkerState struct {
 	Healthy     bool
 	LastPing    time.Time
 	ActiveTasks map[string]*TaskState
-	mutex       sync.RWMutex
+
+	CpuUsage    float64 // CPU usage percentage
+	MemoryUsage int64   // Memory usage in bytes
+
+	mutex sync.RWMutex
 }
 
 // JobState represents a complete MapReduce job
@@ -138,7 +142,7 @@ type JobState struct {
 type BossState struct {
 	pb.UnimplementedWorkerServiceServer
 	pb.UnimplementedClientServiceServer
-	
+
 	// Cluster state
 	Workers      map[string]*WorkerState
 	workersMutex sync.RWMutex

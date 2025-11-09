@@ -109,7 +109,7 @@ type BossToClient struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Msg:
 	//
-	//	*BossToClient_StatusDump
+	//	*BossToClient_DashboardState
 	Msg           isBossToClient_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -152,24 +152,24 @@ func (x *BossToClient) GetMsg() isBossToClient_Msg {
 	return nil
 }
 
-func (x *BossToClient) GetStatusDump() string {
+func (x *BossToClient) GetDashboardState() *DashboardState {
 	if x != nil {
-		if x, ok := x.Msg.(*BossToClient_StatusDump); ok {
-			return x.StatusDump
+		if x, ok := x.Msg.(*BossToClient_DashboardState); ok {
+			return x.DashboardState
 		}
 	}
-	return ""
+	return nil
 }
 
 type isBossToClient_Msg interface {
 	isBossToClient_Msg()
 }
 
-type BossToClient_StatusDump struct {
-	StatusDump string `protobuf:"bytes,1,opt,name=status_dump,json=statusDump,proto3,oneof"` // Simple string dump of system state
+type BossToClient_DashboardState struct {
+	DashboardState *DashboardState `protobuf:"bytes,1,opt,name=dashboard_state,json=dashboardState,proto3,oneof"` // Complete structured state for dashboards
 }
 
-func (*BossToClient_StatusDump) isBossToClient_Msg() {}
+func (*BossToClient_DashboardState) isBossToClient_Msg() {}
 
 // Client introduces itself when connecting
 type ClientHello struct {
@@ -325,6 +325,572 @@ func (x *SubmitJobRequest) GetOutputDir() string {
 	return ""
 }
 
+type DashboardState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	System        *SystemOverview        `protobuf:"bytes,1,opt,name=system,proto3" json:"system,omitempty"`
+	Workers       []*WorkerInfo          `protobuf:"bytes,2,rep,name=workers,proto3" json:"workers,omitempty"`
+	Jobs          []*JobInfo             `protobuf:"bytes,3,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	ActiveTasks   []*TaskInfo            `protobuf:"bytes,4,rep,name=active_tasks,json=activeTasks,proto3" json:"active_tasks,omitempty"`
+	PendingTasks  []*TaskInfo            `protobuf:"bytes,5,rep,name=pending_tasks,json=pendingTasks,proto3" json:"pending_tasks,omitempty"`
+	Timestamp     int64                  `protobuf:"varint,6,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DashboardState) Reset() {
+	*x = DashboardState{}
+	mi := &file_proto_client_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DashboardState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DashboardState) ProtoMessage() {}
+
+func (x *DashboardState) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_client_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DashboardState.ProtoReflect.Descriptor instead.
+func (*DashboardState) Descriptor() ([]byte, []int) {
+	return file_proto_client_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DashboardState) GetSystem() *SystemOverview {
+	if x != nil {
+		return x.System
+	}
+	return nil
+}
+
+func (x *DashboardState) GetWorkers() []*WorkerInfo {
+	if x != nil {
+		return x.Workers
+	}
+	return nil
+}
+
+func (x *DashboardState) GetJobs() []*JobInfo {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
+func (x *DashboardState) GetActiveTasks() []*TaskInfo {
+	if x != nil {
+		return x.ActiveTasks
+	}
+	return nil
+}
+
+func (x *DashboardState) GetPendingTasks() []*TaskInfo {
+	if x != nil {
+		return x.PendingTasks
+	}
+	return nil
+}
+
+func (x *DashboardState) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+type SystemOverview struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	TotalWorkers     int32                  `protobuf:"varint,1,opt,name=total_workers,json=totalWorkers,proto3" json:"total_workers,omitempty"`
+	HealthyWorkers   int32                  `protobuf:"varint,2,opt,name=healthy_workers,json=healthyWorkers,proto3" json:"healthy_workers,omitempty"`
+	TotalCapacity    int32                  `protobuf:"varint,3,opt,name=total_capacity,json=totalCapacity,proto3" json:"total_capacity,omitempty"`            // Sum of all worker capacities
+	UsedCapacity     int32                  `protobuf:"varint,4,opt,name=used_capacity,json=usedCapacity,proto3" json:"used_capacity,omitempty"`               // Sum of all active tasks
+	PendingTaskCount int32                  `protobuf:"varint,5,opt,name=pending_task_count,json=pendingTaskCount,proto3" json:"pending_task_count,omitempty"` // Queue length
+	TotalJobs        int32                  `protobuf:"varint,6,opt,name=total_jobs,json=totalJobs,proto3" json:"total_jobs,omitempty"`
+	ActiveJobs       int32                  `protobuf:"varint,7,opt,name=active_jobs,json=activeJobs,proto3" json:"active_jobs,omitempty"` // Jobs in Mapping/Reducing phase
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *SystemOverview) Reset() {
+	*x = SystemOverview{}
+	mi := &file_proto_client_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SystemOverview) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SystemOverview) ProtoMessage() {}
+
+func (x *SystemOverview) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_client_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SystemOverview.ProtoReflect.Descriptor instead.
+func (*SystemOverview) Descriptor() ([]byte, []int) {
+	return file_proto_client_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SystemOverview) GetTotalWorkers() int32 {
+	if x != nil {
+		return x.TotalWorkers
+	}
+	return 0
+}
+
+func (x *SystemOverview) GetHealthyWorkers() int32 {
+	if x != nil {
+		return x.HealthyWorkers
+	}
+	return 0
+}
+
+func (x *SystemOverview) GetTotalCapacity() int32 {
+	if x != nil {
+		return x.TotalCapacity
+	}
+	return 0
+}
+
+func (x *SystemOverview) GetUsedCapacity() int32 {
+	if x != nil {
+		return x.UsedCapacity
+	}
+	return 0
+}
+
+func (x *SystemOverview) GetPendingTaskCount() int32 {
+	if x != nil {
+		return x.PendingTaskCount
+	}
+	return 0
+}
+
+func (x *SystemOverview) GetTotalJobs() int32 {
+	if x != nil {
+		return x.TotalJobs
+	}
+	return 0
+}
+
+func (x *SystemOverview) GetActiveJobs() int32 {
+	if x != nil {
+		return x.ActiveJobs
+	}
+	return 0
+}
+
+type WorkerInfo struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Healthy            bool                   `protobuf:"varint,2,opt,name=healthy,proto3" json:"healthy,omitempty"`
+	Capacity           int32                  `protobuf:"varint,3,opt,name=capacity,proto3" json:"capacity,omitempty"`
+	CurrentTasks       int32                  `protobuf:"varint,4,opt,name=current_tasks,json=currentTasks,proto3" json:"current_tasks,omitempty"`
+	ActiveTaskIds      []string               `protobuf:"bytes,5,rep,name=active_task_ids,json=activeTaskIds,proto3" json:"active_task_ids,omitempty"` // Just IDs to avoid duplication
+	LastPingSecondsAgo int64                  `protobuf:"varint,6,opt,name=last_ping_seconds_ago,json=lastPingSecondsAgo,proto3" json:"last_ping_seconds_ago,omitempty"`
+	CpuUsagePercent    float32                `protobuf:"fixed32,7,opt,name=cpu_usage_percent,json=cpuUsagePercent,proto3" json:"cpu_usage_percent,omitempty"`   // CPU usage percentage
+	MemoryUsageBytes   int64                  `protobuf:"varint,8,opt,name=memory_usage_bytes,json=memoryUsageBytes,proto3" json:"memory_usage_bytes,omitempty"` // Memory usage in bytes
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *WorkerInfo) Reset() {
+	*x = WorkerInfo{}
+	mi := &file_proto_client_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerInfo) ProtoMessage() {}
+
+func (x *WorkerInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_client_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerInfo.ProtoReflect.Descriptor instead.
+func (*WorkerInfo) Descriptor() ([]byte, []int) {
+	return file_proto_client_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *WorkerInfo) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *WorkerInfo) GetHealthy() bool {
+	if x != nil {
+		return x.Healthy
+	}
+	return false
+}
+
+func (x *WorkerInfo) GetCapacity() int32 {
+	if x != nil {
+		return x.Capacity
+	}
+	return 0
+}
+
+func (x *WorkerInfo) GetCurrentTasks() int32 {
+	if x != nil {
+		return x.CurrentTasks
+	}
+	return 0
+}
+
+func (x *WorkerInfo) GetActiveTaskIds() []string {
+	if x != nil {
+		return x.ActiveTaskIds
+	}
+	return nil
+}
+
+func (x *WorkerInfo) GetLastPingSecondsAgo() int64 {
+	if x != nil {
+		return x.LastPingSecondsAgo
+	}
+	return 0
+}
+
+func (x *WorkerInfo) GetCpuUsagePercent() float32 {
+	if x != nil {
+		return x.CpuUsagePercent
+	}
+	return 0
+}
+
+func (x *WorkerInfo) GetMemoryUsageBytes() int64 {
+	if x != nil {
+		return x.MemoryUsageBytes
+	}
+	return 0
+}
+
+type JobInfo struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Phase             string                 `protobuf:"bytes,2,opt,name=phase,proto3" json:"phase,omitempty"` // "Pending", "Mapping", "Reducing", "Done"
+	MapTasksDone      int32                  `protobuf:"varint,3,opt,name=map_tasks_done,json=mapTasksDone,proto3" json:"map_tasks_done,omitempty"`
+	MapTasksTotal     int32                  `protobuf:"varint,4,opt,name=map_tasks_total,json=mapTasksTotal,proto3" json:"map_tasks_total,omitempty"`
+	ReduceTasksDone   int32                  `protobuf:"varint,5,opt,name=reduce_tasks_done,json=reduceTasksDone,proto3" json:"reduce_tasks_done,omitempty"`
+	ReduceTasksTotal  int32                  `protobuf:"varint,6,opt,name=reduce_tasks_total,json=reduceTasksTotal,proto3" json:"reduce_tasks_total,omitempty"`
+	OverallProgress   float32                `protobuf:"fixed32,7,opt,name=overall_progress,json=overallProgress,proto3" json:"overall_progress,omitempty"` // (map_done + reduce_done) / (map_total + reduce_total)
+	MapperCount       int32                  `protobuf:"varint,8,opt,name=mapper_count,json=mapperCount,proto3" json:"mapper_count,omitempty"`
+	ReducerCount      int32                  `protobuf:"varint,9,opt,name=reducer_count,json=reducerCount,proto3" json:"reducer_count,omitempty"`
+	CreatedSecondsAgo int64                  `protobuf:"varint,10,opt,name=created_seconds_ago,json=createdSecondsAgo,proto3" json:"created_seconds_ago,omitempty"`
+	EnableCombiner    bool                   `protobuf:"varint,11,opt,name=enable_combiner,json=enableCombiner,proto3" json:"enable_combiner,omitempty"`
+	InputFiles        []string               `protobuf:"bytes,12,rep,name=input_files,json=inputFiles,proto3" json:"input_files,omitempty"` // Input files for the job
+	OutputPath        string                 `protobuf:"bytes,13,opt,name=output_path,json=outputPath,proto3" json:"output_path,omitempty"` // Output directory path
+	CodeUri           string                 `protobuf:"bytes,14,opt,name=code_uri,json=codeUri,proto3" json:"code_uri,omitempty"`          // Path to MapReduce code
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *JobInfo) Reset() {
+	*x = JobInfo{}
+	mi := &file_proto_client_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobInfo) ProtoMessage() {}
+
+func (x *JobInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_client_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobInfo.ProtoReflect.Descriptor instead.
+func (*JobInfo) Descriptor() ([]byte, []int) {
+	return file_proto_client_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *JobInfo) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *JobInfo) GetPhase() string {
+	if x != nil {
+		return x.Phase
+	}
+	return ""
+}
+
+func (x *JobInfo) GetMapTasksDone() int32 {
+	if x != nil {
+		return x.MapTasksDone
+	}
+	return 0
+}
+
+func (x *JobInfo) GetMapTasksTotal() int32 {
+	if x != nil {
+		return x.MapTasksTotal
+	}
+	return 0
+}
+
+func (x *JobInfo) GetReduceTasksDone() int32 {
+	if x != nil {
+		return x.ReduceTasksDone
+	}
+	return 0
+}
+
+func (x *JobInfo) GetReduceTasksTotal() int32 {
+	if x != nil {
+		return x.ReduceTasksTotal
+	}
+	return 0
+}
+
+func (x *JobInfo) GetOverallProgress() float32 {
+	if x != nil {
+		return x.OverallProgress
+	}
+	return 0
+}
+
+func (x *JobInfo) GetMapperCount() int32 {
+	if x != nil {
+		return x.MapperCount
+	}
+	return 0
+}
+
+func (x *JobInfo) GetReducerCount() int32 {
+	if x != nil {
+		return x.ReducerCount
+	}
+	return 0
+}
+
+func (x *JobInfo) GetCreatedSecondsAgo() int64 {
+	if x != nil {
+		return x.CreatedSecondsAgo
+	}
+	return 0
+}
+
+func (x *JobInfo) GetEnableCombiner() bool {
+	if x != nil {
+		return x.EnableCombiner
+	}
+	return false
+}
+
+func (x *JobInfo) GetInputFiles() []string {
+	if x != nil {
+		return x.InputFiles
+	}
+	return nil
+}
+
+func (x *JobInfo) GetOutputPath() string {
+	if x != nil {
+		return x.OutputPath
+	}
+	return ""
+}
+
+func (x *JobInfo) GetCodeUri() string {
+	if x != nil {
+		return x.CodeUri
+	}
+	return ""
+}
+
+type TaskInfo struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Id                    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type                  string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`     // "MAP", "REDUCE"
+	Status                string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"` // "Queued", "Assigned", "InProgress", "Completed"
+	JobId                 string                 `protobuf:"bytes,4,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	WorkerId              string                 `protobuf:"bytes,5,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"` // Empty if not assigned
+	ProgressPercent       float32                `protobuf:"fixed32,6,opt,name=progress_percent,json=progressPercent,proto3" json:"progress_percent,omitempty"`
+	RecordsIn             int64                  `protobuf:"varint,7,opt,name=records_in,json=recordsIn,proto3" json:"records_in,omitempty"`
+	RecordsOut            int64                  `protobuf:"varint,8,opt,name=records_out,json=recordsOut,proto3" json:"records_out,omitempty"`
+	Attempt               int32                  `protobuf:"varint,9,opt,name=attempt,proto3" json:"attempt,omitempty"`                                                               // Retry count
+	LeaseExpiresInSeconds int64                  `protobuf:"varint,10,opt,name=lease_expires_in_seconds,json=leaseExpiresInSeconds,proto3" json:"lease_expires_in_seconds,omitempty"` // Time until lease expires
+	// Map-specific
+	ByteStart int64 `protobuf:"varint,11,opt,name=byte_start,json=byteStart,proto3" json:"byte_start,omitempty"`
+	ByteEnd   int64 `protobuf:"varint,12,opt,name=byte_end,json=byteEnd,proto3" json:"byte_end,omitempty"`
+	// Reduce-specific
+	InputFileCount int32 `protobuf:"varint,13,opt,name=input_file_count,json=inputFileCount,proto3" json:"input_file_count,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *TaskInfo) Reset() {
+	*x = TaskInfo{}
+	mi := &file_proto_client_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskInfo) ProtoMessage() {}
+
+func (x *TaskInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_client_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TaskInfo.ProtoReflect.Descriptor instead.
+func (*TaskInfo) Descriptor() ([]byte, []int) {
+	return file_proto_client_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *TaskInfo) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *TaskInfo) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *TaskInfo) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *TaskInfo) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *TaskInfo) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *TaskInfo) GetProgressPercent() float32 {
+	if x != nil {
+		return x.ProgressPercent
+	}
+	return 0
+}
+
+func (x *TaskInfo) GetRecordsIn() int64 {
+	if x != nil {
+		return x.RecordsIn
+	}
+	return 0
+}
+
+func (x *TaskInfo) GetRecordsOut() int64 {
+	if x != nil {
+		return x.RecordsOut
+	}
+	return 0
+}
+
+func (x *TaskInfo) GetAttempt() int32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
+func (x *TaskInfo) GetLeaseExpiresInSeconds() int64 {
+	if x != nil {
+		return x.LeaseExpiresInSeconds
+	}
+	return 0
+}
+
+func (x *TaskInfo) GetByteStart() int64 {
+	if x != nil {
+		return x.ByteStart
+	}
+	return 0
+}
+
+func (x *TaskInfo) GetByteEnd() int64 {
+	if x != nil {
+		return x.ByteEnd
+	}
+	return 0
+}
+
+func (x *TaskInfo) GetInputFileCount() int32 {
+	if x != nil {
+		return x.InputFileCount
+	}
+	return 0
+}
+
 var File_proto_client_proto protoreflect.FileDescriptor
 
 const file_proto_client_proto_rawDesc = "" +
@@ -334,10 +900,9 @@ const file_proto_client_proto_rawDesc = "" +
 	"\x05hello\x18\x01 \x01(\v2\x16.mapreduce.ClientHelloH\x00R\x05hello\x12<\n" +
 	"\n" +
 	"submit_job\x18\x02 \x01(\v2\x1b.mapreduce.SubmitJobRequestH\x00R\tsubmitJobB\x05\n" +
-	"\x03msg\"8\n" +
-	"\fBossToClient\x12!\n" +
-	"\vstatus_dump\x18\x01 \x01(\tH\x00R\n" +
-	"statusDumpB\x05\n" +
+	"\x03msg\"[\n" +
+	"\fBossToClient\x12D\n" +
+	"\x0fdashboard_state\x18\x01 \x01(\v2\x19.mapreduce.DashboardStateH\x00R\x0edashboardStateB\x05\n" +
 	"\x03msg\"G\n" +
 	"\vClientHello\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x1b\n" +
@@ -354,7 +919,70 @@ const file_proto_client_proto_rawDesc = "" +
 	"\voutput_type\x18\a \x01(\x0e2\x15.mapreduce.DataFormatR\n" +
 	"outputType\x12\x1d\n" +
 	"\n" +
-	"output_dir\x18\b \x01(\tR\toutputDir2V\n" +
+	"output_dir\x18\b \x01(\tR\toutputDir\"\xac\x02\n" +
+	"\x0eDashboardState\x121\n" +
+	"\x06system\x18\x01 \x01(\v2\x19.mapreduce.SystemOverviewR\x06system\x12/\n" +
+	"\aworkers\x18\x02 \x03(\v2\x15.mapreduce.WorkerInfoR\aworkers\x12&\n" +
+	"\x04jobs\x18\x03 \x03(\v2\x12.mapreduce.JobInfoR\x04jobs\x126\n" +
+	"\factive_tasks\x18\x04 \x03(\v2\x13.mapreduce.TaskInfoR\vactiveTasks\x128\n" +
+	"\rpending_tasks\x18\x05 \x03(\v2\x13.mapreduce.TaskInfoR\fpendingTasks\x12\x1c\n" +
+	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp\"\x98\x02\n" +
+	"\x0eSystemOverview\x12#\n" +
+	"\rtotal_workers\x18\x01 \x01(\x05R\ftotalWorkers\x12'\n" +
+	"\x0fhealthy_workers\x18\x02 \x01(\x05R\x0ehealthyWorkers\x12%\n" +
+	"\x0etotal_capacity\x18\x03 \x01(\x05R\rtotalCapacity\x12#\n" +
+	"\rused_capacity\x18\x04 \x01(\x05R\fusedCapacity\x12,\n" +
+	"\x12pending_task_count\x18\x05 \x01(\x05R\x10pendingTaskCount\x12\x1d\n" +
+	"\n" +
+	"total_jobs\x18\x06 \x01(\x05R\ttotalJobs\x12\x1f\n" +
+	"\vactive_jobs\x18\a \x01(\x05R\n" +
+	"activeJobs\"\xac\x02\n" +
+	"\n" +
+	"WorkerInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
+	"\ahealthy\x18\x02 \x01(\bR\ahealthy\x12\x1a\n" +
+	"\bcapacity\x18\x03 \x01(\x05R\bcapacity\x12#\n" +
+	"\rcurrent_tasks\x18\x04 \x01(\x05R\fcurrentTasks\x12&\n" +
+	"\x0factive_task_ids\x18\x05 \x03(\tR\ractiveTaskIds\x121\n" +
+	"\x15last_ping_seconds_ago\x18\x06 \x01(\x03R\x12lastPingSecondsAgo\x12*\n" +
+	"\x11cpu_usage_percent\x18\a \x01(\x02R\x0fcpuUsagePercent\x12,\n" +
+	"\x12memory_usage_bytes\x18\b \x01(\x03R\x10memoryUsageBytes\"\x80\x04\n" +
+	"\aJobInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05phase\x18\x02 \x01(\tR\x05phase\x12$\n" +
+	"\x0emap_tasks_done\x18\x03 \x01(\x05R\fmapTasksDone\x12&\n" +
+	"\x0fmap_tasks_total\x18\x04 \x01(\x05R\rmapTasksTotal\x12*\n" +
+	"\x11reduce_tasks_done\x18\x05 \x01(\x05R\x0freduceTasksDone\x12,\n" +
+	"\x12reduce_tasks_total\x18\x06 \x01(\x05R\x10reduceTasksTotal\x12)\n" +
+	"\x10overall_progress\x18\a \x01(\x02R\x0foverallProgress\x12!\n" +
+	"\fmapper_count\x18\b \x01(\x05R\vmapperCount\x12#\n" +
+	"\rreducer_count\x18\t \x01(\x05R\freducerCount\x12.\n" +
+	"\x13created_seconds_ago\x18\n" +
+	" \x01(\x03R\x11createdSecondsAgo\x12'\n" +
+	"\x0fenable_combiner\x18\v \x01(\bR\x0eenableCombiner\x12\x1f\n" +
+	"\vinput_files\x18\f \x03(\tR\n" +
+	"inputFiles\x12\x1f\n" +
+	"\voutput_path\x18\r \x01(\tR\n" +
+	"outputPath\x12\x19\n" +
+	"\bcode_uri\x18\x0e \x01(\tR\acodeUri\"\x9c\x03\n" +
+	"\bTaskInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x15\n" +
+	"\x06job_id\x18\x04 \x01(\tR\x05jobId\x12\x1b\n" +
+	"\tworker_id\x18\x05 \x01(\tR\bworkerId\x12)\n" +
+	"\x10progress_percent\x18\x06 \x01(\x02R\x0fprogressPercent\x12\x1d\n" +
+	"\n" +
+	"records_in\x18\a \x01(\x03R\trecordsIn\x12\x1f\n" +
+	"\vrecords_out\x18\b \x01(\x03R\n" +
+	"recordsOut\x12\x18\n" +
+	"\aattempt\x18\t \x01(\x05R\aattempt\x127\n" +
+	"\x18lease_expires_in_seconds\x18\n" +
+	" \x01(\x03R\x15leaseExpiresInSeconds\x12\x1d\n" +
+	"\n" +
+	"byte_start\x18\v \x01(\x03R\tbyteStart\x12\x19\n" +
+	"\bbyte_end\x18\f \x01(\x03R\abyteEnd\x12(\n" +
+	"\x10input_file_count\x18\r \x01(\x05R\x0einputFileCount2V\n" +
 	"\rClientService\x12E\n" +
 	"\rClientControl\x12\x17.mapreduce.ClientToBoss\x1a\x17.mapreduce.BossToClient(\x010\x01B\x0eZ\fmapreduce/pbb\x06proto3"
 
@@ -370,26 +998,37 @@ func file_proto_client_proto_rawDescGZIP() []byte {
 	return file_proto_client_proto_rawDescData
 }
 
-var file_proto_client_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_proto_client_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_proto_client_proto_goTypes = []any{
 	(*ClientToBoss)(nil),     // 0: mapreduce.ClientToBoss
 	(*BossToClient)(nil),     // 1: mapreduce.BossToClient
 	(*ClientHello)(nil),      // 2: mapreduce.ClientHello
 	(*SubmitJobRequest)(nil), // 3: mapreduce.SubmitJobRequest
-	(DataFormat)(0),          // 4: mapreduce.DataFormat
+	(*DashboardState)(nil),   // 4: mapreduce.DashboardState
+	(*SystemOverview)(nil),   // 5: mapreduce.SystemOverview
+	(*WorkerInfo)(nil),       // 6: mapreduce.WorkerInfo
+	(*JobInfo)(nil),          // 7: mapreduce.JobInfo
+	(*TaskInfo)(nil),         // 8: mapreduce.TaskInfo
+	(DataFormat)(0),          // 9: mapreduce.DataFormat
 }
 var file_proto_client_proto_depIdxs = []int32{
-	2, // 0: mapreduce.ClientToBoss.hello:type_name -> mapreduce.ClientHello
-	3, // 1: mapreduce.ClientToBoss.submit_job:type_name -> mapreduce.SubmitJobRequest
-	4, // 2: mapreduce.SubmitJobRequest.input_type:type_name -> mapreduce.DataFormat
-	4, // 3: mapreduce.SubmitJobRequest.output_type:type_name -> mapreduce.DataFormat
-	0, // 4: mapreduce.ClientService.ClientControl:input_type -> mapreduce.ClientToBoss
-	1, // 5: mapreduce.ClientService.ClientControl:output_type -> mapreduce.BossToClient
-	5, // [5:6] is the sub-list for method output_type
-	4, // [4:5] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	2,  // 0: mapreduce.ClientToBoss.hello:type_name -> mapreduce.ClientHello
+	3,  // 1: mapreduce.ClientToBoss.submit_job:type_name -> mapreduce.SubmitJobRequest
+	4,  // 2: mapreduce.BossToClient.dashboard_state:type_name -> mapreduce.DashboardState
+	9,  // 3: mapreduce.SubmitJobRequest.input_type:type_name -> mapreduce.DataFormat
+	9,  // 4: mapreduce.SubmitJobRequest.output_type:type_name -> mapreduce.DataFormat
+	5,  // 5: mapreduce.DashboardState.system:type_name -> mapreduce.SystemOverview
+	6,  // 6: mapreduce.DashboardState.workers:type_name -> mapreduce.WorkerInfo
+	7,  // 7: mapreduce.DashboardState.jobs:type_name -> mapreduce.JobInfo
+	8,  // 8: mapreduce.DashboardState.active_tasks:type_name -> mapreduce.TaskInfo
+	8,  // 9: mapreduce.DashboardState.pending_tasks:type_name -> mapreduce.TaskInfo
+	0,  // 10: mapreduce.ClientService.ClientControl:input_type -> mapreduce.ClientToBoss
+	1,  // 11: mapreduce.ClientService.ClientControl:output_type -> mapreduce.BossToClient
+	11, // [11:12] is the sub-list for method output_type
+	10, // [10:11] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_proto_client_proto_init() }
@@ -403,7 +1042,7 @@ func file_proto_client_proto_init() {
 		(*ClientToBoss_SubmitJob)(nil),
 	}
 	file_proto_client_proto_msgTypes[1].OneofWrappers = []any{
-		(*BossToClient_StatusDump)(nil),
+		(*BossToClient_DashboardState)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -411,7 +1050,7 @@ func file_proto_client_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_client_proto_rawDesc), len(file_proto_client_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

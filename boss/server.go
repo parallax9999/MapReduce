@@ -109,6 +109,11 @@ func (boss *BossState) Control(stream pb.WorkerService_ControlServer) error {
 			if worker != nil {
 				worker.mutex.Lock()
 				worker.LastPing = time.Now()
+				// Store CPU and memory metrics from pong
+				if m.Pong != nil {
+					worker.CpuUsage = float64(m.Pong.CpuUsage)
+					worker.MemoryUsage = m.Pong.MemoryUsage
+				}
 				worker.mutex.Unlock()
 			}
 
@@ -134,8 +139,8 @@ ClientControl implements the bidirectional streaming RPC for client communicatio
 func (boss *BossState) ClientControl(stream pb.ClientService_ClientControlServer) error {
 	var clientID string
 
-	// Channel to send messages to client
-	outgoingChan := make(chan *pb.BossToClient, 100)
+	// Channel to send messages to client (small buffer for real-time dashboard streaming)
+	outgoingChan := make(chan *pb.BossToClient, 5)
 
 	// Handle outgoing messages
 	boss.wg.Add(1)
@@ -154,11 +159,11 @@ func (boss *BossState) ClientControl(stream pb.ClientService_ClientControlServer
 		}
 	}()
 
-	// Start periodic status dumps
+	// Start periodic dashboard state streaming
 	boss.wg.Add(1)
 	go func() {
 		defer boss.wg.Done()
-		ticker := time.NewTicker(3 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)  // Stream every second
 		defer ticker.Stop()
 
 		for {
@@ -166,12 +171,17 @@ func (boss *BossState) ClientControl(stream pb.ClientService_ClientControlServer
 			case <-boss.ctx.Done():
 				return
 			case <-ticker.C:
-				statusMsg := boss.createStatusDump()
+				dashboardState := boss.buildDashboardState()
+				dashboardMsg := &pb.BossToClient{
+					Msg: &pb.BossToClient_DashboardState{
+						DashboardState: dashboardState,
+					},
+				}
 				select {
-				case outgoingChan <- statusMsg:
-					// Status sent
+				case outgoingChan <- dashboardMsg:
+					// Dashboard state sent
 				default:
-					log.Printf("Failed to send status to client %s - channel full", clientID)
+					log.Printf("Failed to send dashboard state to client %s - channel full", clientID)
 				}
 			}
 		}
@@ -276,70 +286,6 @@ func (boss *BossState) handleTaskProgress(progress *pb.TaskProgress) {
 	boss.workersMutex.RUnlock()
 }
 
-// createStatusDump creates a formatted status string for clients
-func (boss *BossState) createStatusDump() *pb.BossToClient {
-	boss.workersMutex.RLock()
-	boss.jobsMutex.RLock()
-
-	totalWorkers := len(boss.Workers)
-	healthyWorkers := 0
-	activeTasks := 0
-
-	for _, worker := range boss.Workers {
-		if worker.Healthy {
-			healthyWorkers++
-			activeTasks += worker.Current
-		}
-	}
-
-	totalJobs := len(boss.Jobs)
-	pendingTasks := len(boss.PendingTasks)
-
-	// Create job summaries
-	var jobSummaries []string
-	for jobID, job := range boss.Jobs {
-		job.mutex.RLock()
-		summary := fmt.Sprintf("Job %s: %s, Map %d/%d, Reduce %d/%d",
-			jobID, job.Phase, job.MapTasksDone, job.MapTasksTotal,
-			job.ReduceTasksDone, job.ReduceTasksTotal)
-		jobSummaries = append(jobSummaries, summary)
-		job.mutex.RUnlock()
-	}
-
-	boss.workersMutex.RUnlock()
-	boss.jobsMutex.RUnlock()
-
-	// Format status string
-	statusStr := fmt.Sprintf("=== MapReduce Boss Status ===\n"+
-		"Workers: %d/%d healthy\n"+
-		"Tasks: %d active, %d pending\n"+
-		"Jobs: %d total\n"+
-		"Job Details:\n%s\n"+
-		"Time: %s",
-		healthyWorkers, totalWorkers,
-		activeTasks, pendingTasks,
-		totalJobs,
-		formatJobSummaries(jobSummaries),
-		time.Now().Format("15:04:05"))
-
-	return &pb.BossToClient{
-		Msg: &pb.BossToClient_StatusDump{
-			StatusDump: statusStr,
-		},
-	}
-}
-
-// formatJobSummaries formats job summaries for display
-func formatJobSummaries(summaries []string) string {
-	if len(summaries) == 0 {
-		return "  (no jobs)"
-	}
-	result := ""
-	for _, summary := range summaries {
-		result += "  " + summary + "\n"
-	}
-	return result
-}
 
 // handleSubmitJob processes job submission requests and creates real jobs
 func (boss *BossState) handleSubmitJob(req *pb.SubmitJobRequest, clientID string) {
