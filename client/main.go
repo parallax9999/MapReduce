@@ -143,7 +143,7 @@ func (c *Client) submitJob() {
 				InputFiles:     []string{"/input.csv"},
 				MapperCount:    int32(mapperCount),
 				ReducerCount:   int32(reducerCount),
-				EnableCombiner: false,
+				EnableCombiner: true,
 				InputType:      pb.DataFormat_TEXT,
 				OutputType:     pb.DataFormat_TEXT,
 				OutputDir:      "/output",
