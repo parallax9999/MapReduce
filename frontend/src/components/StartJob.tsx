@@ -290,7 +290,7 @@ const StartJob: React.FC<StartJobProps> = ({ volumeDirectory }) => {
                   onChange={handleFileSelect}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-                <div className='py-4 flex justify-center items-center border-dashed border-2 border-gray-800 rounded-lg hover:border-gray-600 transition-colors'>
+                <div className='py-4 flex justify-center items-center border-dashed border-2 border-orange-500 rounded-lg hover:border-gray-600 transition-colors'>
                   <p className='text-lg text-gray-700'>
                     {uploadData.file ? uploadData.file.name : 'Click to Select File'}
                   </p>
@@ -305,7 +305,7 @@ const StartJob: React.FC<StartJobProps> = ({ volumeDirectory }) => {
                   type="text" 
                   value={uploadData.path}
                   onChange={handleUploadPathChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm transition-all"
                   placeholder="/data/myfile.csv"
                 />
               </div>
@@ -314,7 +314,7 @@ const StartJob: React.FC<StartJobProps> = ({ volumeDirectory }) => {
                 type="button"
                 onClick={handleFileUpload}
                 disabled={!uploadData.file || !uploadData.path}
-                className="mt-4 px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="mt-4 px-6 py-2 bg-orange-600 text-white font-medium rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 Upload
               </button>

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -138,34 +137,8 @@ func (c *Client) run() {
 	// Start message handling
 	go c.handleMessages()
 
-	// Start interactive input loop
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("=== MapReduce Client ===")
-	fmt.Println("Commands:")
-	fmt.Println("  'a' + Enter: Submit a job")
-	fmt.Println("  'q' + Enter: Quit")
-	fmt.Print("> ")
-
-	for scanner.Scan() {
-		input := strings.TrimSpace(scanner.Text())
-
-		switch input {
-		case "a":
-			c.submitJob()
-		case "q":
-			log.Println("Quitting...")
-			c.cancel()
-			return
-		default:
-			fmt.Printf("Unknown command: %s\n", input)
-		}
-
-		fmt.Print("> ")
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Printf("Scanner error: %v", err)
-	}
+	// Keep the client running
+	<-c.ctx.Done()
 }
 
 func (c *Client) handleMessages() {
@@ -198,31 +171,6 @@ func (c *Client) handleDashboardState(state *pb.DashboardState) {
 	c.broadcastWebSocketMessage(dashboardMsg)
 }
 
-func (c *Client) submitJob() {
-
-	mapperCount := 2
-	reducerCount := 2
-
-	jobRequest := &pb.ClientToBoss{
-		Msg: &pb.ClientToBoss_SubmitJob{
-			SubmitJob: &pb.SubmitJobRequest{
-				CodeUri:        "/wordcount.py",
-				InputFiles:     []string{"/input.csv"},
-				MapperCount:    int32(mapperCount),
-				ReducerCount:   int32(reducerCount),
-				EnableCombiner: true,
-				InputType:      pb.DataFormat_TEXT,
-				OutputType:     pb.DataFormat_TEXT,
-				OutputDir:      "/output",
-			},
-		},
-	}
-
-	if err := c.stream.Send(jobRequest); err != nil {
-		log.Printf("Failed to submit job: %v", err)
-		return
-	}
-}
 
 // startWebSocketServer starts the WebSocket server for dashboard connections
 func (c *Client) startWebSocketServer() {
@@ -317,14 +265,6 @@ func (c *Client) broadcastWebSocketMessage(message WebSocketMessage) {
 	}
 }
 
-// broadcastToWebSocketClients sends dashboard state to all connected WebSocket clients
-func (c *Client) broadcastToWebSocketClients(state *pb.DashboardState) {
-	dashboardMsg := WebSocketMessage{
-		Type: "dashboard_state",
-		Data: state,
-	}
-	c.broadcastWebSocketMessage(dashboardMsg)
-}
 
 // sendVolumeDirectoryPeriodically scans and sends the volume directory structure periodically
 func (c *Client) sendVolumeDirectoryPeriodically() {
