@@ -113,6 +113,7 @@ type JobState struct {
 	OriginalFiles  []string
 	InputType      DataFormat
 	OutputType     DataFormat
+	OutputDir      string
 
 	// 2D array: [mapper_index][partition_index] = file_path
 	MapOutputs [][]string
@@ -136,6 +137,7 @@ type JobState struct {
 // BossState is the central state of the MapReduce master
 type BossState struct {
 	pb.UnimplementedWorkerServiceServer
+	pb.UnimplementedClientServiceServer
 	
 	// Cluster state
 	Workers      map[string]*WorkerState

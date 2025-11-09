@@ -17,9 +17,6 @@ from typing import Optional
 
 import grpc
 
-# Import generated protobuf files
-# Note: You'll need to generate these from worker.proto using:
-# python -m grpc_tools.protoc -I../boss/proto --python_out=. --grpc_python_out=. ../boss/proto/worker.proto
 try:
     import worker_pb2
     import worker_pb2_grpc
@@ -183,6 +180,20 @@ class Worker:
         """
         task_id = task.task_id.id
         self.current_tasks[task_id] = task
+
+        # Print detailed task information
+        logger.info(f"=== RECEIVED TASK {task_id} ===")
+        logger.info(f"Task Type: {worker_pb2.TaskType.Name(task.type)}")
+        logger.info(f"Input URI: {task.input_uri}")
+        logger.info(f"Code URI: {task.code_uri}")
+        logger.info(f"Output Dir: {task.output_dir}")
+        logger.info(f"Byte Range: {task.byte_start} - {task.byte_end}")
+        logger.info(f"Input Type: {worker_pb2.DataFormat.Name(task.input_type)}")
+        logger.info(f"Output Type: {worker_pb2.DataFormat.Name(task.output_type)}")
+        logger.info(f"Reducer Count: {task.reducer_count}")
+        logger.info(f"Enable Combiner: {task.enable_combiner}")
+        logger.info(f"Attempt: {task.attempt}")
+        logger.info("===============================")
 
         logger.info(f"Starting task {task_id}")
 

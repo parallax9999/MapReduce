@@ -3,6 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -48,8 +52,25 @@ func (boss *BossState) handleTaskCompletion(task *TaskState, success bool, outpu
 			job.MapTasksDone++
 			log.Printf("Job %s: Map tasks completed: %d/%d", job.ID, job.MapTasksDone, job.MapTasksTotal)
 
-			// Store map outputs for reduce phase (TODO: organize by partition)
-			// For now, just store the output paths
+			// Store map outputs organized by partition
+			mapperIndex, err := boss.extractMapperIndex(task.ID)
+			if err != nil {
+				log.Printf("Error extracting mapper index from task %s: %v", task.ID, err)
+			} else {
+				// Store the output paths for this mapper
+				// outputPaths should contain r files, one per partition
+				if len(outputPaths) == job.ReducerCount {
+					job.MapOutputs[mapperIndex] = outputPaths
+					log.Printf("Stored %d partition files for mapper %d", len(outputPaths), mapperIndex)
+				} else {
+					log.Printf("Warning: Expected %d partitions from mapper %d, got %d",
+						job.ReducerCount, mapperIndex, len(outputPaths))
+					// Store what we got anyway
+					if mapperIndex < len(job.MapOutputs) {
+						job.MapOutputs[mapperIndex] = outputPaths
+					}
+				}
+			}
 
 			// Check if all map tasks are done, and we haven't already transitioned
 			// transition into reducing phase
@@ -63,6 +84,9 @@ func (boss *BossState) handleTaskCompletion(task *TaskState, success bool, outpu
 		case ReduceTask:
 			job.ReduceTasksDone++
 			log.Printf("Job %s: Reduce tasks completed: %d/%d", job.ID, job.ReduceTasksDone, job.ReduceTasksTotal)
+
+			// Move reduce output files to client's specified output directory (async)
+			go boss.moveReduceOutputs(job, outputPaths)
 
 			// Check if all reduce tasks are done
 			if job.ReduceTasksDone == job.ReduceTasksTotal && job.Phase == Reducing {
@@ -113,26 +137,42 @@ func (boss *BossState) queueReduceTasks(job *JobState) {
 	codeURI := job.CodeURI
 	inputType := job.InputType
 	outputType := job.OutputType
+	mapOutputs := job.MapOutputs
 	job.mutex.RUnlock()
 
-	for i := 0; i < reducerCount; i++ {
+	// For each reducer, collect inputs from all mappers for that partition
+	for partitionIndex := 0; partitionIndex < reducerCount; partitionIndex++ {
+		var inputPaths []string
+
+		// Collect files for this partition from all mappers
+		for mapperIndex := 0; mapperIndex < len(mapOutputs); mapperIndex++ {
+			mapperOutputs := mapOutputs[mapperIndex]
+			if partitionIndex < len(mapperOutputs) {
+				partitionFile := mapperOutputs[partitionIndex]
+				if partitionFile != "" {
+					inputPaths = append(inputPaths, partitionFile)
+				}
+			}
+		}
+
+		log.Printf("Reduce task %d: collected %d input files from mappers", partitionIndex, len(inputPaths))
+
 		reduceTask := &TaskState{
-			ID:         fmt.Sprintf("reduce-%s-%d", jobID, i),
+			ID:         fmt.Sprintf("reduce-%s-%d", jobID, partitionIndex),
 			JobID:      jobID,
 			Type:       ReduceTask,
 			Status:     Queued,
 			Progress:   0.0,
 			CodeURI:    codeURI,
-			OutputDir:  fmt.Sprintf("/jobs/%s", jobID),
 			InputType:  inputType,
 			OutputType: outputType,
-			InputPaths: []string{}, // TODO: Collect map outputs for this partition
+			InputPaths: inputPaths, // All map outputs for this partition
 			Attempt:    0,
 		}
 
 		select {
 		case boss.PendingTasks <- reduceTask:
-			log.Printf("Queued reduce task %s", reduceTask.ID)
+			log.Printf("Queued reduce task %s with %d input files", reduceTask.ID, len(inputPaths))
 		default:
 			log.Printf("Failed to queue reduce task %s - queue full", reduceTask.ID)
 		}
@@ -207,4 +247,81 @@ func (boss *BossState) createMapTasksForJob(job *JobState, inputFiles []string) 
 
 	log.Printf("Created job %s with %d map tasks and %d reduce tasks",
 		job.ID, mapTaskCount, job.ReducerCount)
+}
+
+// moveReduceOutputs moves completed reduce task outputs to the client's specified output directory
+func (boss *BossState) moveReduceOutputs(job *JobState, outputPaths []string) {
+	if len(outputPaths) == 0 {
+		return
+	}
+
+	// Get volume path
+	volumePath := os.Getenv("VOLUME_PATH")
+	if volumePath == "" {
+		volumePath = "./volume"
+	}
+
+	// Create output directory if it doesn't exist
+	outputDir := filepath.Join(volumePath, job.OutputDir)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.Printf("Failed to create output directory %s: %v", outputDir, err)
+		return
+	}
+
+	// Move each output file to the final output directory
+	for _, outputPath := range outputPaths {
+		// outputPath is what the worker reported (e.g., "/tmp/reduce_output_0.txt")
+		srcPath := filepath.Join(volumePath, outputPath)
+
+		// Extract just the filename for the destination
+		filename := filepath.Base(outputPath)
+		destPath := filepath.Join(outputDir, filename)
+
+		// Move/copy the file
+		if err := boss.moveFile(srcPath, destPath); err != nil {
+			log.Printf("Failed to move output file %s to %s: %v", srcPath, destPath, err)
+		} else {
+			log.Printf("Moved reduce output: %s -> %s", srcPath, destPath)
+		}
+	}
+}
+
+// moveFile moves a file from src to dest (copy + delete since we might be across filesystems)
+func (boss *BossState) moveFile(src, dest string) error {
+	// Read source file
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("failed to read source file: %v", err)
+	}
+
+	// Write to destination
+	if err := os.WriteFile(dest, data, 0644); err != nil {
+		return fmt.Errorf("failed to write destination file: %v", err)
+	}
+
+	// Remove source file
+	if err := os.Remove(src); err != nil {
+		log.Printf("Warning: failed to remove source file %s: %v", src, err)
+		// Don't return error since the important part (copying) succeeded
+	}
+
+	return nil
+}
+
+// extractMapperIndex extracts the mapper index from a task ID like "map-job-123-2" -> 2
+func (boss *BossState) extractMapperIndex(taskID string) (int, error) {
+	// Task IDs have format: "map-{jobID}-{mapperIndex}"
+	parts := strings.Split(taskID, "-")
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("invalid task ID format: %s", taskID)
+	}
+
+	// The last part should be the mapper index
+	indexStr := parts[len(parts)-1]
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse mapper index from %s: %v", indexStr, err)
+	}
+
+	return index, nil
 }

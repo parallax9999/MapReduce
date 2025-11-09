@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package mapreduce;
+
+option go_package = "mapreduce/pb";
+
+import "proto/worker.proto";
+
+
+// ClientService handles communication between clients and boss
+service ClientService {
+    // Boss hosts the server, clients connect to it
+    rpc ClientControl(stream ClientToBoss) returns (stream BossToClient);
+}
+
+// Messages from client to boss
+message ClientToBoss {
+    oneof msg {
+        ClientHello hello = 1;
+        SubmitJobRequest submit_job = 2;
+    }
+}
+
+// Messages from boss to client
+message BossToClient {
+    oneof msg {
+        string status_dump = 1;  // Simple string dump of system state
+    }
+}
+
+// Client introduces itself when connecting
+message ClientHello {
+    string client_id = 1;
+    string user_name = 2;  // Optional user identification
+}
+
+// Job submission
+message SubmitJobRequest {
+    string code_uri = 1;           // Path to user's MapReduce code
+    repeated string input_files = 2; // Input file paths
+    int32 mapper_count = 3;        // Number of map tasks
+    int32 reducer_count = 4;       // Number of reduce tasks
+    bool enable_combiner = 5;      // Use combiner optimization
+    DataFormat input_type = 6;     // TEXT, PARQUET, JSON
+    DataFormat output_type = 7;    // Output format
+    string output_dir = 8;         // Where to store results
+}
+
