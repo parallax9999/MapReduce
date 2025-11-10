@@ -36,7 +36,6 @@ interface WorkerCardProps {
 const WorkerCard: React.FC<WorkerCardProps> = ({ worker, activeTasks }) => {
   const capacity = worker.capacity ?? 0;
   const currentTasks = worker.current_tasks ?? 0;
-  const lastPing = worker.last_ping_seconds_ago ?? 0;
   const cpuUsage = worker.cpu_usage_percent ?? 0;
   const memoryUsage = worker.memory_usage_bytes ?? 0;
 

@@ -1,5 +1,4 @@
 import React from 'react';
-import FileBrowser from './FileBrowser';
 import SystemOverview from './SystemOverview';
 import JobsOverview from './JobsOverview';
 import WorkersOverview from './WorkersOverview';

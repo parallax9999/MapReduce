@@ -25,7 +25,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task }) => {
   const recordsIn = task.records_in ?? 0;
   const recordsOut = task.records_out ?? 0;
   const attempt = task.attempt ?? 0;
-  const leaseExpiresIn = task.lease_expires_in_seconds ?? 0;
   const inputFileCount = task.input_file_count ?? 0;
 
   const getTypeIcon = (type: string) => {
