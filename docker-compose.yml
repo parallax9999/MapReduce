@@ -1,0 +1,96 @@
+services:
+  # Boss Server (Go)
+  boss:
+    build:
+      context: ./boss
+      dockerfile: Dockerfile
+    container_name: mapreduce-boss
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./volume:/volume
+    environment:
+      - VOLUME_PATH=/volume
+    networks:
+      - mapreduce-net
+    restart: unless-stopped
+
+  # Worker 1
+  worker1:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: mapreduce-worker1
+    depends_on:
+      - boss
+    volumes:
+      - ./volume:/volume
+    environment:
+      - BOSS_ADDR=boss:8080
+      - WORKER_SLOTS=1
+      - VOLUME_PATH=/volume
+    networks:
+      - mapreduce-net
+    restart: unless-stopped
+
+  # Worker 2
+  worker2:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: mapreduce-worker2
+    depends_on:
+      - boss
+    volumes:
+      - ./volume:/volume
+    environment:
+      - BOSS_ADDR=boss:8080
+      - WORKER_SLOTS=1
+      - VOLUME_PATH=/volume
+    networks:
+      - mapreduce-net
+    restart: unless-stopped
+
+  # Worker 3
+  worker3:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: mapreduce-worker3
+    depends_on:
+      - boss
+    volumes:
+      - ./volume:/volume
+    environment:
+      - BOSS_ADDR=boss:8080
+      - WORKER_SLOTS=1
+      - VOLUME_PATH=/volume
+    networks:
+      - mapreduce-net
+    restart: unless-stopped
+
+  # Worker 4
+  worker4:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: mapreduce-worker4
+    depends_on:
+      - boss
+    volumes:
+      - ./volume:/volume
+    environment:
+      - BOSS_ADDR=boss:8080
+      - WORKER_SLOTS=1
+      - VOLUME_PATH=/volume
+    networks:
+      - mapreduce-net
+    restart: unless-stopped
+
+networks:
+  mapreduce-net:
+    driver: bridge
+
+volumes:
+  volume:
+    driver: local
