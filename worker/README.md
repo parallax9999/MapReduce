@@ -11,7 +11,7 @@ Python implementation of a MapReduce worker that connects to the boss server and
 
 2. **Generate protobuf files:**
    ```bash
-   python -m grpc_tools.protoc \
+   python3 -m grpc_tools.protoc \
      -I../boss/proto \
      --python_out=. \
      --grpc_python_out=. \

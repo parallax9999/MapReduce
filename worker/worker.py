@@ -395,11 +395,12 @@ class Worker:
                 if current_time - last_progress_time >= 5.0:
                     # Calculate progress based on bytes processed
                     progress = (bytes_processed / total_bytes * 100) if total_bytes > 0 else 0
-                    await self.send_progress(task, progress, 
+                    await self.send_progress(task, progress,
                                            records_in=records_processed,
                                            records_out=records_written,
                                            read_bytes=bytes_processed,
                                            write_bytes=bytes_written)
+                    await self.send_pong()  # Keep boss informed we're alive during long I/O
                     last_progress_time = current_time
 
             # If combiner is enabled, apply combiner and write results
@@ -494,6 +495,7 @@ class Worker:
                         # Send progress update every 50KB during file reading (stay at 0%)
                         if bytes_read % 50000 == 0:
                             await self.send_progress(task, 0.0, records_read, 0, bytes_read, 0)
+                            await self.send_pong()  # Keep boss informed we're alive during long I/O
                             await asyncio.sleep(0)  # Yield control
 
                         # Parse key,value
@@ -536,6 +538,7 @@ class Worker:
                     if records_written % 100 == 0:
                         progress_percent = (keys_processed / total_keys) * 100.0 if total_keys > 0 else 0.0
                         await self.send_progress(task, progress_percent, records_read, records_written, bytes_read, bytes_written)
+                        await self.send_pong()  # Keep boss informed we're alive during long I/O
                         await asyncio.sleep(0)
                 
                 keys_processed += 1
@@ -638,6 +641,7 @@ class Worker:
                 
                 # Send progress every chunk (every 1MB)
                 await self.send_progress(task, 0.0, 0, 0, bytes_read, 0)
+                await self.send_pong()  # Keep boss informed we're alive during long I/O
                 await asyncio.sleep(0)  # Yield control
         
         return ''.join(data_chunks)
