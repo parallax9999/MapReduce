@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -28,11 +27,11 @@ type Client struct {
 	stream   pb.ClientService_ClientControlClient
 	ctx      context.Context
 	cancel   context.CancelFunc
-	
+
 	// WebSocket server for dashboard connections
-	wsUpgrader   websocket.Upgrader
-	wsClients    map[*websocket.Conn]bool
-	wsClientsMux sync.RWMutex
+	wsUpgrader     websocket.Upgrader
+	wsClients      map[*websocket.Conn]bool
+	wsClientsMux   sync.RWMutex
 	wsBroadcastMux sync.Mutex // Protect WebSocket writes
 }
 
@@ -74,8 +73,6 @@ type FileUploadResponse struct {
 func main() {
 	clientID := fmt.Sprintf("client-%d", time.Now().UnixNano())
 	bossAddr := "localhost:8080"
-
-	log.Printf("Starting dummy client %s", clientID)
 
 	client := &Client{
 		id:       clientID,
@@ -138,34 +135,8 @@ func (c *Client) run() {
 	// Start message handling
 	go c.handleMessages()
 
-	// Start interactive input loop
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("=== MapReduce Client ===")
-	fmt.Println("Commands:")
-	fmt.Println("  'a' + Enter: Submit a job")
-	fmt.Println("  'q' + Enter: Quit")
-	fmt.Print("> ")
-
-	for scanner.Scan() {
-		input := strings.TrimSpace(scanner.Text())
-
-		switch input {
-		case "a":
-			c.submitJob()
-		case "q":
-			log.Println("Quitting...")
-			c.cancel()
-			return
-		default:
-			fmt.Printf("Unknown command: %s\n", input)
-		}
-
-		fmt.Print("> ")
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Printf("Scanner error: %v", err)
-	}
+	// Keep the client running
+	<-c.ctx.Done()
 }
 
 func (c *Client) handleMessages() {
@@ -198,56 +169,30 @@ func (c *Client) handleDashboardState(state *pb.DashboardState) {
 	c.broadcastWebSocketMessage(dashboardMsg)
 }
 
-func (c *Client) submitJob() {
-
-	mapperCount := 2
-	reducerCount := 2
-
-	jobRequest := &pb.ClientToBoss{
-		Msg: &pb.ClientToBoss_SubmitJob{
-			SubmitJob: &pb.SubmitJobRequest{
-				CodeUri:        "/wordcount.py",
-				InputFiles:     []string{"/input.csv"},
-				MapperCount:    int32(mapperCount),
-				ReducerCount:   int32(reducerCount),
-				EnableCombiner: true,
-				InputType:      pb.DataFormat_TEXT,
-				OutputType:     pb.DataFormat_TEXT,
-				OutputDir:      "/output",
-			},
-		},
-	}
-
-	if err := c.stream.Send(jobRequest); err != nil {
-		log.Printf("Failed to submit job: %v", err)
-		return
-	}
-}
-
 // startWebSocketServer starts the WebSocket server for dashboard connections
 func (c *Client) startWebSocketServer() {
 	http.HandleFunc("/ws", c.handleWebSocketConnection)
-	
+
 	// Add job submission API endpoint
 	http.HandleFunc("/api/submit-job", c.handleJobSubmission)
-	
+
 	// Add file upload API endpoint
 	http.HandleFunc("/api/upload-file", c.handleFileUpload)
-	
+
 	// Add CORS headers for development
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
+
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		
+
 		w.Write([]byte("MapReduce Dashboard WebSocket Server"))
 	})
-	
+
 	log.Println("Starting WebSocket server on :8081")
 	if err := http.ListenAndServe(":8081", nil); err != nil {
 		log.Printf("WebSocket server failed: %v", err)
@@ -261,14 +206,14 @@ func (c *Client) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 		log.Printf("Failed to upgrade WebSocket connection: %v", err)
 		return
 	}
-	
+
 	log.Printf("New dashboard connected: %s", r.RemoteAddr)
-	
+
 	// Add client to the list
 	c.wsClientsMux.Lock()
 	c.wsClients[conn] = true
 	c.wsClientsMux.Unlock()
-	
+
 	// Handle disconnection
 	defer func() {
 		c.wsClientsMux.Lock()
@@ -277,7 +222,7 @@ func (c *Client) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 		conn.Close()
 		log.Printf("Dashboard disconnected: %s", r.RemoteAddr)
 	}()
-	
+
 	// Keep connection alive and handle ping/pong
 	for {
 		_, _, err := conn.ReadMessage()
@@ -292,21 +237,21 @@ func (c *Client) broadcastWebSocketMessage(message WebSocketMessage) {
 	// Serialize the broadcast to prevent concurrent WebSocket writes
 	c.wsBroadcastMux.Lock()
 	defer c.wsBroadcastMux.Unlock()
-	
+
 	if len(c.wsClients) == 0 {
 		return // No clients connected
 	}
-	
+
 	// Convert message to JSON
 	messageJSON, err := json.Marshal(message)
 	if err != nil {
 		log.Printf("Failed to marshal WebSocket message: %v", err)
 		return
 	}
-	
+
 	c.wsClientsMux.RLock()
 	defer c.wsClientsMux.RUnlock()
-	
+
 	// Send to all connected clients
 	for client := range c.wsClients {
 		err := client.WriteMessage(websocket.TextMessage, messageJSON)
@@ -317,24 +262,15 @@ func (c *Client) broadcastWebSocketMessage(message WebSocketMessage) {
 	}
 }
 
-// broadcastToWebSocketClients sends dashboard state to all connected WebSocket clients
-func (c *Client) broadcastToWebSocketClients(state *pb.DashboardState) {
-	dashboardMsg := WebSocketMessage{
-		Type: "dashboard_state",
-		Data: state,
-	}
-	c.broadcastWebSocketMessage(dashboardMsg)
-}
-
 // sendVolumeDirectoryPeriodically scans and sends the volume directory structure periodically
 func (c *Client) sendVolumeDirectoryPeriodically() {
 	// Send initial directory structure
 	c.sendVolumeDirectory()
-	
+
 	// Send updates every 3 seconds
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -351,26 +287,26 @@ func (c *Client) sendVolumeDirectory() {
 	if volumePath == "" {
 		volumePath = "/volume" // Default fallback
 	}
-	
+
 	// Check if volume directory exists
 	if _, err := os.Stat(volumePath); os.IsNotExist(err) {
 		log.Printf("Volume directory does not exist: %s", volumePath)
 		return
 	}
-	
+
 	// Scan directory structure
 	root, err := c.scanDirectory(volumePath, "")
 	if err != nil {
 		log.Printf("Failed to scan volume directory: %v", err)
 		return
 	}
-	
+
 	// Send the children directly instead of the root volume node
 	var directoryContents []*FileSystemNode
 	if root != nil && root.Children != nil {
 		directoryContents = root.Children
 	}
-	
+
 	// Send to WebSocket clients
 	volumeMsg := WebSocketMessage{
 		Type: "volume_directory",
@@ -382,29 +318,29 @@ func (c *Client) sendVolumeDirectory() {
 // scanDirectory recursively scans a directory and builds a FileSystemNode tree
 func (c *Client) scanDirectory(basePath, relativePath string) (*FileSystemNode, error) {
 	fullPath := filepath.Join(basePath, relativePath)
-	
+
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	node := &FileSystemNode{
 		Name: info.Name(),
 		Path: relativePath,
 	}
-	
+
 	if relativePath == "" {
 		node.Name = "volume" // Root name
 	}
-	
+
 	if info.IsDir() {
 		node.Type = "directory"
-		
+
 		entries, err := os.ReadDir(fullPath)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		for _, entry := range entries {
 			childPath := filepath.Join(relativePath, entry.Name())
 			child, err := c.scanDirectory(basePath, childPath)
@@ -417,7 +353,7 @@ func (c *Client) scanDirectory(basePath, relativePath string) (*FileSystemNode, 
 	} else {
 		node.Type = "file"
 	}
-	
+
 	return node, nil
 }
 
@@ -428,12 +364,12 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		json.NewEncoder(w).Encode(JobSubmissionResponse{
@@ -442,7 +378,7 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Parse the JSON request
 	var jobReq JobSubmissionRequest
 	if err := json.NewDecoder(r.Body).Decode(&jobReq); err != nil {
@@ -453,7 +389,7 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Validate required fields
 	if jobReq.CodeUri == "" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -463,7 +399,7 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	if len(jobReq.InputFiles) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(JobSubmissionResponse{
@@ -472,7 +408,7 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Convert input type string to protobuf enum
 	var inputType pb.DataFormat
 	switch strings.ToUpper(jobReq.InputType) {
@@ -485,7 +421,7 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 	default:
 		inputType = pb.DataFormat_TEXT
 	}
-	
+
 	// Convert output type string to protobuf enum
 	var outputType pb.DataFormat
 	switch strings.ToUpper(jobReq.OutputType) {
@@ -498,7 +434,7 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 	default:
 		outputType = pb.DataFormat_TEXT
 	}
-	
+
 	// Create the job request
 	grpcJobRequest := &pb.ClientToBoss{
 		Msg: &pb.ClientToBoss_SubmitJob{
@@ -514,7 +450,7 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
-	
+
 	// Send the job to the boss
 	if err := c.stream.Send(grpcJobRequest); err != nil {
 		log.Printf("Failed to submit job via API: %v", err)
@@ -525,9 +461,9 @@ func (c *Client) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	log.Printf("Job submitted via API: %s", jobReq.CodeUri)
-	
+
 	// Return success response
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(JobSubmissionResponse{
@@ -544,12 +480,12 @@ func (c *Client) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		json.NewEncoder(w).Encode(FileUploadResponse{
@@ -558,9 +494,9 @@ func (c *Client) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
-	// Parse multipart form (32MB max)
-	err := r.ParseMultipartForm(32 << 20)
+
+	// Parse multipart form (no size limit)
+	err := r.ParseMultipartForm(0)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(FileUploadResponse{
@@ -569,7 +505,7 @@ func (c *Client) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Get the file from the form
 	file, handler, err := r.FormFile("file")
 	if err != nil {
@@ -581,7 +517,7 @@ func (c *Client) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	
+
 	// Get the upload path from form
 	uploadPath := r.FormValue("path")
 	if uploadPath == "" {
@@ -592,21 +528,21 @@ func (c *Client) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Clean the path and ensure it starts with /
 	if !strings.HasPrefix(uploadPath, "/") {
 		uploadPath = "/" + uploadPath
 	}
-	
+
 	// Get volume path from environment
 	volumePath := os.Getenv("VOLUME_PATH")
 	if volumePath == "" {
-		volumePath = "/volume" // Default fallback
+		volumePath = "./volume" // Default fallback
 	}
-	
+
 	// Construct full file path
 	fullPath := filepath.Join(volumePath, uploadPath)
-	
+
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -617,7 +553,7 @@ func (c *Client) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Create the destination file
 	dst, err := os.Create(fullPath)
 	if err != nil {
@@ -629,7 +565,7 @@ func (c *Client) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer dst.Close()
-	
+
 	// Copy file contents
 	_, err = io.Copy(dst, file)
 	if err != nil {
@@ -640,9 +576,9 @@ func (c *Client) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	log.Printf("File uploaded successfully: %s (original: %s)", fullPath, handler.Filename)
-	
+
 	// Return success response
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(FileUploadResponse{
