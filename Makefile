@@ -22,7 +22,6 @@ help:
 
 # Build images
 build:
-	@echo "🔨 Building Docker images..."
 	docker compose build
 	docker compose up -d
 	docker compose logs -f
@@ -72,7 +71,7 @@ status:
 # Clean everything
 clean:
 	@echo "🗑️  Cleaning up..."
-	docker-compose down -v
+	docker compose down
 	@echo "✅ Cleanup complete!"
 
 # Rebuild from scratch

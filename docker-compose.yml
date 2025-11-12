@@ -1,12 +1,16 @@
+version: '3.8'
+
 services:
-  # Boss Server (Go)
-  boss:
+  # Combined Boss + Client + Frontend container
+  controller:
     build:
-      context: ./boss
-      dockerfile: Dockerfile
-    container_name: mapreduce-boss
+      context: .
+      dockerfile: Dockerfile.controller
+    container_name: mapreduce-controller
     ports:
-      - "8080:8080"
+      - "3000:3000"  # React Frontend (main access point)
+      - "8080:8080"  # Boss gRPC server
+      - "8081:8081"  # Client WebSocket/REST API
     volumes:
       - ./volume:/volume
     environment:
@@ -14,6 +18,11 @@ services:
     networks:
       - mapreduce-net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # Worker 1
   worker1:
@@ -22,11 +31,11 @@ services:
       dockerfile: Dockerfile
     container_name: mapreduce-worker1
     depends_on:
-      - boss
+      - controller
     volumes:
       - ./volume:/volume
     environment:
-      - BOSS_ADDR=boss:8080
+      - BOSS_ADDR=controller:8080
       - WORKER_SLOTS=1
       - VOLUME_PATH=/volume
     networks:
@@ -40,11 +49,11 @@ services:
       dockerfile: Dockerfile
     container_name: mapreduce-worker2
     depends_on:
-      - boss
+      - controller
     volumes:
       - ./volume:/volume
     environment:
-      - BOSS_ADDR=boss:8080
+      - BOSS_ADDR=controller:8080
       - WORKER_SLOTS=1
       - VOLUME_PATH=/volume
     networks:
@@ -58,11 +67,11 @@ services:
       dockerfile: Dockerfile
     container_name: mapreduce-worker3
     depends_on:
-      - boss
+      - controller
     volumes:
       - ./volume:/volume
     environment:
-      - BOSS_ADDR=boss:8080
+      - BOSS_ADDR=controller:8080
       - WORKER_SLOTS=1
       - VOLUME_PATH=/volume
     networks:
@@ -76,11 +85,11 @@ services:
       dockerfile: Dockerfile
     container_name: mapreduce-worker4
     depends_on:
-      - boss
+      - controller
     volumes:
       - ./volume:/volume
     environment:
-      - BOSS_ADDR=boss:8080
+      - BOSS_ADDR=controller:8080
       - WORKER_SLOTS=1
       - VOLUME_PATH=/volume
     networks:
@@ -90,7 +99,3 @@ services:
 networks:
   mapreduce-net:
     driver: bridge
-
-volumes:
-  volume:
-    driver: local
