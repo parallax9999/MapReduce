@@ -1,0 +1,145 @@
+# Multi-stage Dockerfile for Boss + Client + Frontend
+# Handles replace directive in client/go.mod
+
+# Stage 1: Build Boss binary
+FROM golang:1.25-alpine AS boss-builder
+
+WORKDIR /app
+
+RUN apk add --no-cache git
+
+# Copy entire boss directory
+COPY boss/ ./boss/
+
+WORKDIR /app/boss
+
+# Build
+RUN go mod download && \
+    CGO_ENABLED=0 GOOS=linux go build -o /boss .
+
+# Stage 2: Build Client binary  
+FROM golang:1.25-alpine AS client-builder
+
+WORKDIR /app
+
+RUN apk add --no-cache git
+
+# Copy BOTH boss and client since client references boss via replace directive
+COPY boss/ ./boss/
+COPY client/ ./client/
+
+WORKDIR /app/client
+
+# Build
+RUN go mod download && \
+    CGO_ENABLED=0 GOOS=linux go build -o /client .
+
+# Stage 3: Build React frontend
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY frontend/package.json frontend/package-lock.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy all frontend source
+COPY frontend/ ./
+
+# Build production bundle
+RUN npm run build
+
+# Stage 4: Final runtime image
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk --no-cache add ca-certificates nginx supervisor
+
+# Copy binaries from builders
+COPY --from=boss-builder /boss /usr/local/bin/boss
+COPY --from=client-builder /client /usr/local/bin/client
+
+# Copy frontend build
+COPY --from=frontend-builder /app/dist /usr/share/nginx/html
+
+# Create nginx config
+RUN cat > /etc/nginx/nginx.conf << 'EOFNGINX'
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    server {
+        listen 3000;
+        server_name localhost;
+        
+        root /usr/share/nginx/html;
+        index index.html;
+        
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+        
+        location /ws {
+            proxy_pass http://localhost:8081;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+        }
+        
+        location /api/ {
+            proxy_pass http://localhost:8081;
+            proxy_set_header Host $host;
+        }
+    }
+}
+EOFNGINX
+
+# Create supervisor config
+RUN cat > /etc/supervisord.conf << 'EOFSUPERVISOR'
+[supervisord]
+nodaemon=true
+logfile=/var/log/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:boss]
+command=/usr/local/bin/boss
+autostart=true
+autorestart=true
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+environment=VOLUME_PATH="/volume"
+
+[program:client]
+command=/usr/local/bin/client
+autostart=true
+autorestart=true
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+environment=BOSS_ADDR="localhost:8080",VOLUME_PATH="/volume"
+
+[program:nginx]
+command=nginx -g 'daemon off;'
+autostart=true
+autorestart=true
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+EOFSUPERVISOR
+
+RUN mkdir -p /volume
+
+EXPOSE 3000 8080 8081
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
